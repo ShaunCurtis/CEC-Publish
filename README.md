@@ -6,7 +6,7 @@ This set of articles looks at how to build and structure a real Database Applica
 1. Project Structure and Framework.
 2. Services - Building the CRUD Data Layers.
 3. View Components - Building the CRUD Presentation Layer.
-4. UI Components v- Building HTML/CSS Controls.
+4. UI Components - Building HTML/CSS Controls.
 5. A walk through detailing how to add weather stations and weather station data to the application.
 
 They document my current framework for developing Blazor Applications.
