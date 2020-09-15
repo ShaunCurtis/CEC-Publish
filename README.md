@@ -38,7 +38,7 @@ The rest of this article walks through the Server and WASM sites.
 
 ### CEC.Blazor.WASM.Client Project
 
-![Project Files](images/CEC.Blazor.WASM.client.png)
+![Project Files](https://github.com/ShaunCurtis/CEC-Publish/blob/master/Images/CEC.Blazor.WASM.Client.png?raw=true)
 
 #### Routes (Views) 
 
