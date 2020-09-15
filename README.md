@@ -153,11 +153,11 @@ Points to note:
 2. The scripts are referenced in the same way.
 3. The *app* tag contains a startup HTML block that displays while the project is loading.
 
-![App Start Screen](images/WASM-Start-Screen.png)
+![App Start Screen](https://github.com/ShaunCurtis/CEC-Publish/blob/master/Images/WASM-Start-Screen.png?raw=true)
 
 ### CEC.Blazor.WASM.Server Project
 
-![Project Files](images/CEC.Blazor.WASM.Server.png)
+![Project Files](https://github.com/ShaunCurtis/CEC-Publish/blob/master/Images/CEC.Blazor.WASM.Server.png?raw=true)
 
 The only files the server project contains, other than error handling for anyone trying to navigate to the site, are the WeatherForecast Controller and the startup/program files.
 
@@ -230,7 +230,7 @@ public static class ServiceCollectionExtensions
 
 ### CEC.Blazor.Server Project
 
-![Project Files](images/CEC.Blazor.Server.png)
+![Project Files](https://github.com/ShaunCurtis/CEC-Publish/blob/master/Images/CEC.Blazor.Server.png?raw=true)
 
 This project is very similar to *CEC.Blazor.WASM.Client*.  Before I highlight the differences, look at what is the same.
 
