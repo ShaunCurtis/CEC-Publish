@@ -3,561 +3,512 @@
 	<li><a href="https://github.com/ShaunCurtis/CEC-Publish/archive/master.zip">Download local copy</a></li>
 </ul>
 
-<h2>Part 2 - Services - Building the CRUD Data Layers</h2>
+<h2>Introduction</h2>
 
-<p>This article is the second in a series on Building Blazor Projects: it describes techniques and methodologies for abstracting the data and business logic layers into boilerplate code in a library.</p>
+<p><a href="https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S">Part 2</a> describes techniques and methodologies for abstracting the data and business logic layers into boilerplate code in a library. This article does the same with the presentation layer.</p>
+
+<h3>Sample Project and Code</h3>
 
 <p>See the <a href="https://github.com/ShaunCurtis/CEC.Blazor">CEC.Blazor GitHub Repository</a> for the libraries and sample projects.</p>
 
-<h3>Services</h3>
+<h3>The Base Forms</h3>
 
-<p>Blazor is built on DI [Dependency Injection] and IOC [Inversion of Control]. If your not familiar with these concepts, do a little <a href="https://www.codeproject.com/Articles/5274732/Dependency-Injection-and-IoC-Containers-in-Csharp" rel="nofollow">backgound reading</a> before diving into Blazor. You will save yourself time in the long run!</p>
+<p>The CRUD UI is implemented as a set of boilerplate components inheriting from <code>OwningComponentBase</code>. <code>OwningComponentBase</code> is used for control over the scope of Scoped Services. Code is available on the Github site and linked at appropriate places in this article.</p>
 
-<p>Blazor Singleton and Transient services are relatively straight forward. You can read more about them in the <a href="https://docs.microsoft.com/en-us/aspnet/core/blazor/fundamentals/dependency-injection" rel="nofollow">Microsoft Documentation</a>. Scoped are a little more complicated.</p>
+<h4>ApplicationComponentBase</h4>
 
-<ol>
-	<li>A scoped service object exists for the lifetime of a client application session - note client and not server. Any application resets, such as F5 or navigation away from the application, resets all scoped services. A duplicated tab in a browser creates a new application, and a new set of scoped services.</li>
-	<li>A scoped service can be object scoped in code. This is most common in a UI conponent. The <code>OwningComponentBase</code> component class has functionality to restrict the life of a scoped service to the lifetime of the component. This will be discussed in further detail n the next article.</li>
-</ol>
+<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ApplicationComponentBase.cs">CEC.Blazor/Components/Base.ApplicationComponentBase.cs</a></p>
 
-<p>Services is the Blazor IOC [Inversion of Control] container. In Server mode services are configured in <code>startup.cs</code>:</p>
-
-<pre lang="cs">
-// CEC.Blazor.Server/startup.cs
-public void ConfigureServices(IServiceCollection services)
-{
-    services.AddRazorPages();
-    services.AddServerSideBlazor();
-    // the Services for the CEC.Blazor .
-    services.AddCECBlazor();
-    // the Services for the CEC.Routing Library
-    services.AddCECRouting();
-    // the local application Services defined in ServiceCollectionExtensions.cs
-    services.AddApplicationServices(Configurtion);
-}</pre>
-
-<pre lang="cs">
-// CEC.Blazor.Server/Extensions/ServiceCollectionExtensions.cs
-public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
-{
-    // Singleton service for the Server Side version of WeatherForecast Data Service 
-    services.AddSingleton&lt;IWeatherForecastDataService, WeatherForecastServerDataService&gt;();
-    // Scoped service for the WeatherForecast Controller Service
-    services.AddScoped&lt;WeatherForecastControllerService&gt;();
-    // Transient service for the Fluent Validator for the WeatherForecast record
-    services.AddTransient&lt;IValidator&lt;DbWeatherForecast&gt;, WeatherForecastValidator&gt;();
-    // Factory that builds the specific DBContext 
-    var dbContext = configuration.GetValue&lt;string&gt;(&quot;Configuration:DBContext&quot;);
-    services.AddDbContextFactory&lt;WeatherForecastDbContext&gt;(options =&gt; options.UseSqlServer(dbContext), ServiceLifetime.Singleton);
-    return services;
-}</pre>
-
-<p>and <code>program.cs</code> in WASM mode:</p>
-
-<pre lang="cs">
-// CEC.Blazor.WASM.Client/program.cs
-public static async Task Main(string[] args)
-{
-    .....
-    // Added here as we don&#39;t have access to buildler in AddApplicationServices
-    builder.Services.AddScoped(sp =&gt; new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
-    // the Services for the CEC.Blazor Library
-    builder.Services.AddCECBlazor();
-    // the Services for the CEC.Routing Library
-    builder.Services.AddCECRouting();
-    // the local application Services defined in ServiceCollectionExtensions.cs
-    builder.Services.AddApplicationServices();
-    .....
-}</pre>
-
-<pre lang="cs">
-// CEC.Blazor.WASM.Client/Extensions/ServiceCollectionExtensions.cs
-public static IServiceCollection AddApplicationServices(this IServiceCollection services)
-{
-    // Scoped service for the WASM Client version of WeatherForecast Data Service 
-    services.AddScoped&lt;IWeatherForecastDataService, WeatherForecastWASMDataService&gt;();
-    // Scoped service for the WeatherForecast Controller Service
-    services.AddScoped&lt;WeatherForecastControllerService&gt;();
-    services.AddTransient&lt;IValidator&lt;DbWeatherForecast&gt;, WeatherForecastValidator&gt;();
-    // Transient service for the Fluent Validator for the WeatherForecast record
-    return services;
-}</pre>
-
-<p>Points:</p>
+<p><code>ApplicationComponentBase</code> is the base component and contains all the common client application code:</p>
 
 <ol>
-	<li>There&#39;s an <code>IServiceCollection</code> extension method for each project/library to encapsulate the specific services needed for the project.</li>
-	<li>Only the data layer service is different. The Server version, used by both the Blazor Server and the WASM API Server, interfaces with the database and Entitiy Framework. It&#39;s scoped as a Singleton - as we are running async, DbContexts are created and closed per query. The Client version uses <code>HttpClient</code> (which is a scoped service) to make calls to the API and is therefore itself scoped.</li>
-	<li>A code factory is used to build the specific DBContext, and provide the necessary level of abstraction for boilerplating the core data service code in the base library.</li>
+	<li>Injection of common services, such as Navigation Manager and Application Configuration</li>
+	<li>Authentication and user management</li>
+	<li>Navigation and Routing</li>
 </ol>
 
-<h3>Generics</h3>
+<h4>ControllerServiceComponent and Its Children</h4>
 
-<p>The boilerplate library code relies heavily on Generics. The two generic entities used are:</p>
+<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ControllerServiceComponentBase.cs">CEC.Blazor/Components/Base.ControllerServiceComponentBase.cs</a></p>
+
+<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ControllerServiceComponentBase.cs">ControllerServiceComponentBase</a> is the base CRUD component.</p>
+
+<p>There are three inherited classes for specific CRUD operations:</p>
 
 <ol>
-	<li><code>TRecord</code> - this represents a model record class. It must implement <code>IDbRecord</code>, a vanilla <code>new()</code> and be a class.</li>
-	<li><code>TContext</code> - this is the database context and must inherit from the <code>DbContext</code> class.</li>
+	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ListComponentBase.cs">ListComponentBase</a> for all list pages</li>
+	<li><code>RecordComponentBase</code> for displaying individual records</li>
+	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/EditComponentBase.cs">EditComponentBase</a> for CUD [<code>Create</code>/<code>Update</code>/<code>Delete</code>] operations</li>
 </ol>
 
-<p>Class declarations look like this:</p>
+<p>All common code resides in <code>ControllerServiceComponent</code>, specific code in the inherited class.</p>
+
+<h3>Implementing CRUD Pages</h3>
+
+<p>We&#39;ll look at the editor in detail to see how the components are structured and edit functionality implemented.</p>
+
+<h4>The View</h4>
+
+<p>The routed view is a very simple component. We separate the actual view component from the routed view. It&#39;s used in other pages such as the modal dialog viewer.</p>
 
 <pre lang="cs">
-// CEC.Blazor/Services/BaseDataClass.cs
-public abstract class BaseDataService&lt;TRecord, TContext&gt;: 
-    IDataService&lt;TRecord, TContext&gt;
-    where TRecord : class, IDbRecord&lt;TRecord&gt;, new()
-    where TContext : DbContext
-{......}</pre>
+// CEC.Blazor.WASM.Client/Routes/WeatherForecastEditorView.razor
+@page &quot;/WeatherForecast/New&quot;
+@page &quot;/WeatherForecast/Edit&quot;
+@inherits ApplicationComponentBase
+@namespace CEC.Blazor.WASM.Client.Routes
 
-<h3>The Entity Framework Tier</h3>
+&lt;WeatherEditorForm&gt;&lt;/WeatherEditorForm&gt;</pre>
 
-<p>The solution uses a combination of Entity Framework [EF] and normal database access. Being old school (the application gets nowhere near the data tables). I implement CUD [CRUD without the Read] through stored procedures, and R [Read access] and List through views. The data tier has two layers - the EF Database Context and a Data Service.</p>
+<h4>The Form</h4>
 
-<p>The database account ued by Entity Framework database has access limited to select on Views and execute on Stored Procedures.</p>
-
-<p>The demo application can be run with or without a full database connection - there&#39;s a &quot;Dummy database&quot; server Data Service.</p>
-
-<p>All EF code is implemented in <code>CEC.Weather</code>, the shared project specific library.</p>
-
-<h4>WeatherForecastDBContext</h4>
-
-<p>The <code>DbContext</code> has a <code>DbSet</code> per record type. Each <code>DbSet</code> is linked to a view in <code>OnModelCreating()</code>. The WeatherForecast application has one record type.</p>
-
-<p>The class looks like this:</p>
+<p>Again, a relatively simple component programmatically.</p>
 
 <pre lang="cs">
-// CEC.Weather/Data/WeatherForecastDbContext.cs
-public class WeatherForecastDbContext : DbContext
+// CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor
+public partial class WeatherEditorForm : EditRecordComponentBase&lt;DbWeatherForecast, 
+                                         WeatherForecastDbContext&gt;
 {
-    public WeatherForecastDbContext(DbContextOptions&lt;WeatherForecastDbContext&gt; options) : base(options) { }
+    [Inject]
+    public WeatherForecastControllerService ControllerService { get; set; }
 
-    public DbSet&lt;DbWeatherForecast&gt; WeatherForecasts { get; set; }
+    private string CardCSS =&gt; this.IsModal ? &quot;m-0&quot; : &quot;&quot;;
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    protected async override Task OnInitializedAsync()
     {
-        modelBuilder
-            .Entity&lt;DbWeatherForecast&gt;(eb =&gt;
-            {
-                eb.HasNoKey();
-                eb.ToView(&quot;vw_WeatherForecast&quot;);
-            });
+        // Assign the correct controller service
+        this.Service = this.ControllerService;
+        await base.OnInitializedAsync();
     }
 }</pre>
 
-<h3>The Data Service Tier</h3>
+<p>This gets and assigns the specific <code>ControllerService</code> through DI to the Service Property <code>[IContollerService]</code>.</p>
 
-<h4>IDbRecord</h4>
+<p>The Razor Markup below is an abbreviated version of the actual file. This makes extensive use of <code>UIControl</code>s which will be discussed in detail in the next article. The comments provide explanation.</p>
 
-<p><code>IDbRecord</code> defines the common interface for all database records.</p>
+<pre lang="html">
+// CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor.cs
+// UI Card is a Bootstrap Card
+&lt;UICard IsCollapsible=&quot;false&quot;&gt;
+    &lt;Header&gt;
+        @this.PageTitle
+    &lt;/Header&gt;
+    &lt;Body&gt;
+        // Cascades the Event Handler in the form for RecordChanged. 
+        // Picked up by each FormControl and fired when a value changes in the FormControl
+        &lt;CascadingValue Value=&quot;@this.RecordFieldChanged&quot; Name=&quot;OnRecordChange&quot; 
+         TValue=&quot;Action&lt;bool&gt;&quot;&gt;
+            // Error handler - only renders it&#39;s content when the record exists and is loaded
+            &lt;UIErrorHandler IsError=&quot;@this.IsError&quot; 
+             IsLoading=&quot;this.IsDataLoading&quot; ErrorMessage=&quot;@this.RecordErrorMessage&quot;&gt;
+                &lt;UIContainer&gt;
+                    // Standard Blazor EditForm control
+                    &lt;EditForm EditContext=&quot;this.EditContext&quot;&gt;
+                        // Fluent ValidationValidator for the form
+                        &lt;FluentValidationValidator DisableAssemblyScanning=&quot;@true&quot; /&gt;
+                        .....
+                        // Example data value row with label and edit control
+                        &lt;UIFormRow&gt;
+                            &lt;UILabelColumn Columns=&quot;4&quot;&gt;
+                                Record Date:
+                            &lt;/UILabelColumn&gt;
+                            &lt;UIColumn Columns=&quot;4&quot;&gt;
+                                // Note the Record Value bind to the record shadow copy 
+                                // to detect changes from the original stored value
+                                &lt;FormControlDate class=&quot;form-control&quot; 
+                                 @bind-Value=&quot;this.Service.Record.Date&quot; 
+                                 RecordValue=&quot;this.Service.ShadowRecord.Date&quot;&gt;
+                                &lt;/FormControlDate&gt;
+                            &lt;/UIColumn&gt;
+                        &lt;/UIFormRow&gt;
+                        ..... // more form rows here
+                    &lt;/EditForm&gt;
+                &lt;/UIContainer&gt;
+            &lt;/UIErrorHandler&gt;
+            // Container for the buttons - not record dependant so outside the 
+            // error handler to allow navigation if UIErrorHandler is in error.
+            &lt;UIContainer&gt;
+                &lt;UIRow&gt;
+                    &lt;UIColumn Columns=&quot;7&quot;&gt;
+                        // Bootstrap alert to display any messages
+                        &lt;UIAlert Alert=&quot;this.AlertMessage&quot; SizeCode=&quot;Bootstrap.SizeCode.sm&quot;&gt;
+                        &lt;/UIAlert&gt;
+                    &lt;/UIColumn&gt;
+                    &lt;UIButtonColumn Columns=&quot;5&quot;&gt;
+                        ....
+                        // UIButton is a Bootstrap button. 
+                        // Show controls whether it&#39;s displayed.
+                        // For example Save is displayed when the Service Record is Dirty 
+                        // and the record has loaded. 
+                        &lt;UIButton Show=&quot;(!this.IsClean) &amp;&amp; this.IsLoaded&quot; 
+                         ClickEvent=&quot;this.Save&quot; ColourCode=&quot;Bootstrap.ColourCode.save&quot;&gt;
+                         Save&lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;this.ShowExitConfirmation &amp;&amp; this.IsLoaded&quot; 
+                         ClickEvent=&quot;this.ConfirmExit&quot; 
+                         ColourCode=&quot;Bootstrap.ColourCode.danger_exit&quot;&gt;Exit Without Saving
+                        &lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;(!this.NavigationCancelled) &amp;&amp; 
+                         !this.ShowExitConfirmation&quot; 
+                         ClickEvent=&quot;(e =&gt; this.NavigateTo(PageExitType.ExitToList))&quot; 
+                         ColourCode=&quot;Bootstrap.ColourCode.nav&quot;&gt;Exit To List&lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;(!this.NavigationCancelled) &amp;&amp; 
+                         !this.ShowExitConfirmation&quot; ClickEvent=&quot;this.Exit&quot; 
+                         ColourCode=&quot;Bootstrap.ColourCode.nav&quot;&gt;Exit&lt;/UIButton&gt;
+                    &lt;/UIButtonColumn&gt;
+                &lt;/UIRow&gt;
+            &lt;/UIContainer&gt;
+        &lt;/CascadingValue&gt;
+    &lt;/Body&gt;
+&lt;/UICard&gt;</pre>
+
+<h4>Base Form Code</h4>
+
+<h5>OnInitializedAsync</h5>
+
+<p>The code block below shows the two <code>OnInitializedAsync</code> methods in the class hierarchy.</p>
+
+<p><code>OnInitializedAsync</code> is implemented from top down (local code is run before calling the base method).</p>
 
 <pre lang="cs">
-// CEC.Blazor/Data/Interfaces/IDbRecord.cs
-public interface IDbRecord&lt;T&gt;
+// CEC.Weather/Components/Forms/WeatherEditorForm.razor.cs
+protected async override Task OnInitializedAsync()
 {
-    public int ID { get; }
-
-    public string DisplayName { get; }
-
-    public T ShadowCopy(); 
-}</pre>
-
-<p>IDbRecord ensures:</p>
-
-<ul>
-	<li>An Id/Value pair for Select dropdowns.</li>
-	<li>A default name to use in the title area of any control when displaying the record.</li>
-	<li>A deep copy of the record when needed during editing.</li>
-</ul>
-
-<h4>IDataService</h4>
-
-<p>Core Data Service functionality is defined in the <code>IDataService</code> interface.</p>
-
-<pre lang="cs">
-// CEC.Blazor/Services/Interfaces/IDataService.cs
- public interface IDataService&lt;TRecord, TContext&gt; 
-        where TRecord : class, IDbRecord&lt;TRecord&gt;, new() 
-        where TContext : DbContext
-     {
-        /// Used by the WASM client, otherwise set to null
-        public HttpClient HttpClient { get; set; }
-
-        /// Access to the DBContext using the IDbContextFactory interface 
-       public IDbContextFactory&lt;TContext&gt; DBContext { get; set; }
-
-        /// Access to the application configuration in Server
-        public IConfiguration AppConfiguration { get; set; }
-
-        /// Record Configuration object that contains routing and naming information about the specific record type
-        public RecordConfigurationData RecordConfiguration { get; set; }
-
-        /// Method to get the full Record List
-        public Task&lt;List&lt;TRecord&gt;&gt; GetRecordListAsync() =&gt; Task.FromResult(new List&lt;TRecord&gt;());
-
-        /// Method to get a filtered Record List using a IFilterLit object
-        public Task&lt;List&lt;TRecord&gt;&gt; GetFilteredRecordListAsync(IFilterList filterList) =&gt; Task.FromResult(new List&lt;TRecord&gt;());
-
-        /// Method to get a single Record
-        public Task&lt;TRecord&gt; GetRecordAsync(int id) =&gt; Task.FromResult(new TRecord());
-
-        /// Method to get the current record count
-        public Task&lt;int&gt; GetRecordListCountAsync() =&gt; Task.FromResult(0);
-
-        /// Method to update a record
-        public Task&lt;DbTaskResult&gt; UpdateRecordAsync(TRecord record) =&gt; Task.FromResult(new DbTaskResult() { IsOK = false, Type = MessageType.NotImplemented, Message = &quot;Method not implemented&quot; });
-
-        /// method to create and add a record
-        public Task&lt;DbTaskResult&gt; CreateRecordAsync(TRecord record) =&gt; Task.FromResult(new DbTaskResult() { IsOK = false, Type = MessageType.NotImplemented, Message = &quot;Method not implemented&quot; });
-
-        /// Method to delete a record
-        public Task&lt;DbTaskResult&gt; DeleteRecordAsync(TRecord record) =&gt; Task.FromResult(new DbTaskResult() { IsOK = false, Type = MessageType.NotImplemented, Message = &quot;Method not implemented&quot; });
-
-        /// Method to build the a list of SqlParameters for a CUD Stored Procedure.  Uses custom atrribute data.
-        public List&lt;SqlParameter&gt; GetSQLParameters(TRecord item, bool withid = false) =&gt; new List&lt;SqlParameter&gt;();
-    }</pre>
-
-<h4>BaseDataService</h4>
-
-<p><code>BaseDataService</code> implements the Interface</p>
-
-<pre lang="cs">
-// CEC.Blazor/Services/Interfaces
-public abstract class BaseDataService&lt;TRecord&gt;: IDataService&lt;TRecord&gt; where TRecord : IDbRecord&lt;TRecord&gt;, new()
-{
-    // The HttpClient used by the WASM dataservice implementation - set to null by default - set in the WASM implementation
-    public HttpClient HttpClient { get; set; } = null;
-
-    // The DBContext access through the IDbContextFactory interface - set to null by default - set in the Server implementation
-    public virtual IDbContextFactory&lt;TContext&gt; DBContext { get; set; } = null;
-
-    // Access to the Application Configuration
-    public IConfiguration AppConfiguration { get; set; }
-    
-    // Record Configuration - set in each specific model implementation
-    public virtual RecordConfigurationData RecordConfiguration { get; set; } = new RecordConfigurationData();
-
-    // Base new
-    public BaseDataService(IConfiguration configuration) =&gt; this.AppConfiguration = configuration;
-    }</pre>
-
-<h4>BaseServerDataService</h4>
-
-<p>See the <a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Services/BaseServerDataService.cs">project code</a> for the full class - it&#39;s rather long.</p>
-
-<p>The service implements boilerplate code:</p>
-
-<ol>
-	<li>Implement the <code>IDataService</code> interface CRUD methods.</li>
-	<li>Async Methods to build out the Create, Update and Delete Stored Procedures.</li>
-	<li>Async Methods to get lists and individual records using EF DbSets.</li>
-</ol>
-
-<p>The code relies on either:</p>
-
-<ul>
-	<li>using naming conventions
-	<ul>
-		<li>Model class names Db<code>RecordName</code> - e.g. <code>DbWeatherForecast</code>.</li>
-		<li>DbContext DbSet properties named <code>RecordName</code> - e.g. <code>WeatherForecast</code>.</li>
-	</ul>
-	</li>
-	<li>using custom attributes.
-	<ul>
-		<li><code>DbAccess</code> - class level attribute to define the Stored Procedure names.</li>
-		<li><code>SPParameter</code> - Property specific attribute to mark all properties used in the Stored Procedures.</li>
-	</ul>
-	</li>
-</ul>
-
-<p>A short section of the DbWeatherForecast model class is shown below decorated with the custom attributes.</p>
-
-<pre lang="cs">
-[DbAccess(CreateSP = &quot;sp_Create_WeatherForecast&quot;, UpdateSP =&quot;sp_Update_WeatherForecast&quot;, DeleteSP =&quot;sp_Delete_WeatherForecast&quot;) ]
-public class DbWeatherForecast :IDbRecord&lt;DbWeatherForecast&gt;
-{
-    [SPParameter(IsID = true, DataType = SqlDbType.Int)]
-    public int WeatherForecastID { get; set; } = -1;
-
-    [SPParameter(DataType = SqlDbType.SmallDateTime)]
-    public DateTime Date { get; set; } = DateTime.Now.Date;
-    ......
-}</pre>
-
-<p>Data operations on EF are implemented as extension methods on <code>DBContext</code>.</p>
-
-<p>Stored Procedures are run by calling <code>ExecStoredProcAsync()</code>. The method is shown below. It uses the EF DBContext to get a normal ADO Database Command Object, and then executes the Stored Procedure with a parameter set built using the custom attributes from the Model class.</p>
-
-<pre lang="cs">
-// CEC.Blazor/Extensions/DBContextExtensions.cs
-public static async Task&lt;bool&gt; ExecStoredProcAsync(this DbContext context, string storedProcName, List&lt;SqlParameter&gt; parameters)
-{
-    var result = false;
-
-    var cmd = context.Database.GetDbConnection().CreateCommand();
-    cmd.CommandText = storedProcName;
-    cmd.CommandType = CommandType.StoredProcedure;
-    parameters.ForEach(item =&gt; cmd.Parameters.Add(item));
-    using (cmd)
-    {
-        if (cmd.Connection.State == ConnectionState.Closed) cmd.Connection.Open();
-        try
-        {
-            await cmd.ExecuteNonQueryAsync();
-        }
-        catch {}
-        finally
-        {
-            cmd.Connection.Close();
-            result = true;
-        }
-    }
-    return result;
-}</pre>
-
-<p>Using Create as an example.</p>
-
-<pre lang="cs">
-// CEC.Blazor/Services/DBServerDataService.cs
-public async Task&lt;DbTaskResult&gt; CreateRecordAsync(TRecord record) =&gt; await this.RunStoredProcedure(record, SPType.Create);</pre>
-
-<p>See the comments for information</p>
-
-<pre lang="cs">
-// CEC.Blazor/Services/DBServerDataService.cs
-protected async Task&lt;DbTaskResult&gt; RunStoredProcedure(TRecord record, SPType spType)
-{
-    // Builds a default error DbTaskResult
-    var ret = new DbTaskResult()
-    {
-        Message = $&quot;Error saving {this.RecordConfiguration.RecordDescription}&quot;,
-        IsOK = false,
-        Type = MessageType.Error
-    };
-
-    // Gets the correct Stored Procedure name.
-    var spname = spType switch
-    {
-        SPType.Create =&gt; this.RecordInfo.CreateSP,
-        SPType.Update =&gt; this.RecordInfo.UpdateSP,
-        SPType.Delete =&gt; this.RecordInfo.DeleteSP,
-        _ =&gt; string.Empty
-    };
-    
-    // Gets the Parameters List
-    var parms = this.GetSQLParameters(record, spType);
-
-    // Executes the Stored Procedure with the parameters.
-    // Builds a new Success DbTaskResult.  In this case (Create) it retrieves the new ID.
-    if (await this.DBContext.CreateDbContext().ExecStoredProcAsync(spname, parms))
-    {
-        var idparam = parms.FirstOrDefault(item =&gt; item.Direction == ParameterDirection.Output &amp;&amp; item.SqlDbType == SqlDbType.Int &amp;&amp; item.ParameterName.Contains(&quot;ID&quot;));
-        ret = new DbTaskResult()
-        {
-            Message = $&quot;{this.RecordConfiguration.RecordDescription} saved&quot;,
-            IsOK = true,
-            Type = MessageType.Success
-        };
-        if (idparam != null) ret.NewID = Convert.ToInt32(idparam.Value);
-    }
-    return ret;
-}</pre>
-
-<p>You can dig into the detail of <code>GetSqlParameters</code> in the <a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Services/BaseServerDataService.cs">GitHub Code File</a>.</p>
-
-<p>The Read and List methods get the DbSet name through reflection, and use EF methodology and the <code>IDbRecord</code> interface to get the data.</p>
-
-<pre lang="cs">
-// CEC.Blazor/Extensions/DBContextExtensions
-
-public async static Task&lt;List&lt;TRecord&gt;&gt; GetRecordListAsync&lt;TRecord&gt;(this DbContext context, string dbSetName = null) where TRecord : class, IDbRecord&lt;TRecord&gt;
-{
-    var par = context.GetType().GetProperty(dbSetName ?? IDbRecord&lt;TRecord&gt;.RecordName);
-    var set = par.GetValue(context);
-    var sets = (DbSet&lt;TRecord&gt;)set;
-    return await sets.ToListAsync();
+    // Assign the correct controller service
+    this.Service = this.ControllerService;
+    // Set the delay on the record load as this is a demo project
+    this.DemoLoadDelay = 250;
+    await base.OnInitializedAsync();
 }
 
-public async static Task&lt;int&gt; GetRecordListCountAsync&lt;TRecord&gt;(this DbContext context, string dbSetName = null) where TRecord : class, IDbRecord&lt;TRecord&gt;
+// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
+protected async override Task OnInitializedAsync()
 {
-    var par = context.GetType().GetProperty(dbSetName ?? IDbRecord&lt;TRecord&gt;.RecordName);
-    var set = par.GetValue(context);
-    var sets = (DbSet&lt;TRecord&gt;)set;
-    return await sets.CountAsync();
+    // Resets the record to blank 
+    await this.Service.ResetRecordAsync();
+    await base.OnInitializedAsync();
 }
 
-public async static Task&lt;TRecord&gt; GetRecordAsync&lt;TRecord&gt;(this DbContext context, int id, string dbSetName = null) where TRecord : class, IDbRecord&lt;TRecord&gt;
+// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
+protected async override Task OnInitializedAsync()
 {
-    var par = context.GetType().GetProperty(dbSetName ?? IDbRecord&lt;TRecord&gt;.RecordName);
-    var set = par.GetValue(context);
-    var sets = (DbSet&lt;TRecord&gt;)set;
-    return await sets.FirstOrDefaultAsync(item =&gt; ((IDbRecord&lt;TRecord&gt;)item).ID == id);
+    // Gets the user if we have an AuthenticationState
+    if (this.AuthenticationState != null) await this.GetUserAsync();
+    await base.OnInitializedAsync();
 }</pre>
 
-<h4>BaseWASMDataService</h4>
+<h5>OnParametersSetAsync</h5>
 
-<p>See the <a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Services/BaseWASMDataService.cs">project code</a> for the full class.</p>
-
-<p>The client version of the class is relatively simple, using the <code>HttpClient</code> to make API calls to the server. Again we rely on naming conventions for boilerplating to work.</p>
-
-<p>Using Create as an example.</p>
+<p><code>OnParametersSetAsync</code> is implemented from bottom up (the base method is called before any local code).</p>
 
 <pre lang="cs">
-// CEC.Blazor/Services/DBWASMDataService.cs
-public async Task&lt;DbTaskResult&gt; CreateRecordAsync(TRecord record)
+// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
+protected async override Task OnParametersSetAsync()
 {
-    var response = await this.HttpClient.PostAsJsonAsync&lt;TRecord&gt;($&quot;{RecordConfiguration.RecordName}/create&quot;, record);
-    var result = await response.Content.ReadFromJsonAsync&lt;DbTaskResult&gt;();
-    return result;
+    await base.OnParametersSetAsync();
+    // Get the record if required - see below for method detail
+    await this.LoadRecordAsync();
 }</pre>
 
-<p>We&#39;ll look at the Server Side Controller shortly.</p>
+<h5>LoadRecordAsync</h5>
 
-<h3>Project Specific Implementation</h3>
-
-<p>For abstraction purposes we define a common data service interface. This implements no new functionality, just specifies the generics.</p>
+<p>The record loading code is broken out of <code>OnParametersSetAsync</code> as it&#39;s used outside the component lifecycle methods. It&#39;s implemented from bottom up (the base method is called before any local code).</p>
 
 <pre lang="cs">
-// CEC.Weather/Services/Interfaces/IWeatherForecastDataService.cs
-public interface IWeatherForecastDataService : 
-    IDataService&lt;DbWeatherForecast, WeatherForecastDbContext&gt;
+// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
+protected virtual async Task LoadRecordAsync()
 {
-    // Only code here is to build dummy data set
-}</pre>
-
-<p>The WASM service inherits from <code>BaseWASMDataService</code> and implements <code>IWeatherForecastDataService</code>. It defines the generics and configures the <code>RecordConfiguration</code>.</p>
-
-<pre lang="cs">
-// CEC.Weather/Services/WeatherForecastWASMDataService.cs
-public class WeatherForecastWASMDataService :
-    BaseWASMDataService&lt;DbWeatherForecast, WeatherForecastDbContext&gt;,
-    IWeatherForecastDataService
-{
-    public WeatherForecastWASMDataService(IConfiguration configuration, HttpClient httpClient) : base(configuration, httpClient)
+    if (this.IsService)
     {
-        this.RecordConfiguration = new RecordConfigurationData() { RecordName = &quot;WeatherForecast&quot;, RecordDescription = &quot;Weather Forecast&quot;, RecordListName = &quot;WeatherForecasts&quot;, RecordListDecription = &quot;Weather Forecasts&quot; };
+        // Set the Loading flag and call StateNasChanged to force UI changes 
+        // in this case making the UIErrorHandler show the loading spinner 
+        this.IsDataLoading = true;
+        StateHasChanged();
+
+        // Check if we have a query string value in the Route for ID.  If so use it
+        if (this.NavManager.TryGetQueryString&lt;int&gt;(&quot;id&quot;, out int querystringid)) 
+            this.ID = querystringid &gt; -1 ? querystringid : this._ID;
+
+        // Check if the component is a modal.  If so get the supplied ID
+        else if (this.IsModal &amp;&amp; this.Parent.Options.Parameters.TryGetValue
+        (&quot;ID&quot;, out object modalid)) this.ID = (int)modalid &gt; -1 ? (int)modalid : this.ID;
+
+        // make this look slow to demo the spinner
+        if (this.DemoLoadDelay &gt; 0) await Task.Delay(this.DemoLoadDelay);
+
+        // Get the current record - this will check if the id is different from 
+        // the current record and only update if it&#39;s changed
+        await this.Service.GetRecordAsync(this._ID, false);
+
+        // Set the error message - it will only be displayed if we have an error
+        this.RecordErrorMessage = $&quot;The Application can&#39;t load the Record with ID: {this._ID}&quot;;
+
+        // Set the Loading flag and call statehaschanged to force UI changes 
+        // in this case making the UIErrorHandler show the record or the error message 
+        this.IsDataLoading = false;
+        StateHasChanged();
+    }
+}
+
+// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
+protected async override Task LoadRecordAsync()
+{
+    await base.LoadRecordAsync();
+
+    //set up the Edit Context
+    this.EditContext = new EditContext(this.Service.Record);
+
+    // Get the actual page Url from the Navigation Manager
+    this.RouteUrl = this.NavManager.Uri;
+    // Set up this page as the active page in the router service
+    this.RouterSessionService.ActiveComponent = this;
+    // Wire up the router NavigationCancelled event
+    this.RouterSessionService.NavigationCancelled += this.OnNavigationCancelled;
+}</pre>
+
+<h5>OnAfterRenderAsync</h5>
+
+<p><code>OnAfterRenderAsync</code> is implemented from bottom up (base is called before any local code is executed).</p>
+
+<pre lang="">
+// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
+protected async override Task OnAfterRenderAsync(bool firstRender)
+{
+    await base.OnAfterRenderAsync(firstRender);
+    // Wire up the SameComponentNavigation Event - i.e. we potentially have a new record 
+    // to load in the same View 
+    if (firstRender) this.RouterSessionService.SameComponentNavigation += 
+                                                         this.OnSameRouteRouting;
+}</pre>
+
+<h5>Event Handlers</h5>
+
+<p>There are three event handlers wired up in the Component load events.</p>
+
+<pre lang="cs">
+// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
+// Event handler for a navigation cancelled event raised by the router
+protected virtual void OnNavigationCancelled(object sender, EventArgs e)
+{
+    // Set the boolean properties
+    this.NavigationCancelled = true;
+    this.ShowExitConfirmation = true;
+    // Set up the alert
+    this.AlertMessage.SetAlert(&quot;&lt;b&gt;THIS RECORD ISN&#39;T SAVED&lt;/b&gt;. 
+    Either &lt;i&gt;Save&lt;/i&gt; or &lt;i&gt;Exit Without Saving&lt;/i&gt;.&quot;, Bootstrap.ColourCode.danger);
+    // Trigger a component State update - buttons and alert need to be sorted
+    InvokeAsync(this.StateHasChanged);
+}</pre>
+
+<pre lang="cs">
+// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
+// Event handler for the RecordFromControls FieldChanged Event
+protected virtual void RecordFieldChanged(bool isdirty)
+{
+    if (this.EditContext != null)
+    {
+        // Sort the Service Edit State
+        this.Service.SetClean(!isdirty);
+        // Set the boolean properties
+        this.ShowExitConfirmation = false;
+        this.NavigationCancelled = false;
+        // Sort the component state based on the edit state
+        if (this.IsClean)
+        {
+            this.AlertMessage.ClearAlert();
+            this.RouterSessionService.SetPageExitCheck(false);
+        }
+        else
+        {
+            this.AlertMessage.SetAlert(&quot;The Record isn&#39;t Saved&quot;, Bootstrap.ColourCode.warning);
+            this.RouterSessionService.SetPageExitCheck(true);
+        }
+        // Trigger a component State update - buttons and alert need to be sorted
+        InvokeAsync(this.StateHasChanged);
     }
 }</pre>
 
-<p>The Server service inherits from <code>BaseServerDataService</code> and implements <code>IWeatherForecastDataService</code>. It defines the generics and configures the <code>RecordConfiguration</code>.</p>
+<pre lang="cs">
+// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
+// Event handler for SameRoute event raised by the router. 
+// Check if we need to load a new record
+protected async void OnSameRouteRouting(object sender, EventArgs e)
+{
+    // Gets the record - checks for a new ID in the querystring and 
+    // if we have one loads the records
+    await LoadRecordAsync();
+}</pre>
+
+<h5>Action Button Events</h5>
+
+<p>There are four action events.</p>
 
 <pre lang="cs">
-// CEC.Weather/Services/WeatherForecastServerDataService.cs
-public class WeatherForecastServerDataService :
-    BaseServerDataService&lt;DbWeatherForecast, WeatherForecastDbContext&gt;,
-    IWeatherForecastDataService
+// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
+/// Save Method called from the Button
+protected virtual async Task&lt;bool&gt; Save()
 {
-    public WeatherForecastServerDataService(IConfiguration configuration, IDbContextFactory&lt;WeatherForecastDbContext&gt; dbcontext) : base(configuration, dbcontext)
+    var ok = false;
+    // Validate the EditContext
+    if (this.EditContext.Validate())
     {
-        this.RecordConfiguration = new RecordConfigurationData() { RecordName = &quot;WeatherForecast&quot;, RecordDescription = &quot;Weather Forecast&quot;, RecordListName = &quot;WeatherForecasts&quot;, RecordListDecription = &quot;Weather Forecasts&quot; };
+        // Save the Record
+        ok = await this.Service.SaveRecordAsync();
+        if (ok)
+        {
+            // Set the EditContext State
+            this.EditContext.MarkAsUnmodified();
+            // Set the boolean properties
+            this.ShowExitConfirmation = false;
+            // Sort the Router session state
+            this.RouterSessionService.NavigationCancelledUrl = string.Empty;
+        }
+        // Set the alert message to the return result
+        this.AlertMessage.SetAlert(this.Service.TaskResult);
+        // Trigger a component State update - buttons and alert need to be sorted
+        this.UpdateState();
+    }
+    else this.AlertMessage.SetAlert(&quot;A validation error occurred. 
+    Check individual fields for the relevant error.&quot;, Bootstrap.ColourCode.danger);
+    return ok;
+}</pre>
+
+<pre lang="cs">
+// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
+/// Save and Exit Method called from the Button
+protected virtual async void SaveAndExit()
+{
+    if (await this.Save()) this.ConfirmExit();
+}</pre>
+
+<pre lang="cs">
+// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
+/// Exit Method called from the Button
+protected virtual void Exit()
+{
+    // Check if we are free (we have a clean record) to exit or need confirmation
+    if (this.IsClean) ConfirmExit();
+    else this.ShowExitConfirmation = true;
+}</pre>
+
+<pre lang="cs">
+// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
+/// Confirm Exit Method called from the Button
+protected virtual void ConfirmExit()
+{
+    // To escape a dirty component set IsClean manually and navigate.
+    this.Service.SetClean();
+    // Sort the Router session state
+    this.RouterSessionService.NavigationCancelledUrl = string.Empty;
+    //turn off page exit checking
+    this.RouterSessionService.SetPageExitCheck(false);
+    // Sort the exit strategy
+    if (this.IsModal) ModalExit();
+    else
+    {
+        // Check if we have a Url the user tried to navigate to - default exit to the root
+        if (!string.IsNullOrEmpty(this.RouterSessionService.NavigationCancelledUrl)) 
+            this.NavManager.NavigateTo(this.RouterSessionService.NavigationCancelledUrl);
+        else if (!string.IsNullOrEmpty(this.RouterSessionService.ReturnRouteUrl)) 
+                 this.NavManager.NavigateTo(this.RouterSessionService.ReturnRouteUrl);
+        else this.NavManager.NavigateTo(&quot;/&quot;);
     }
 }</pre>
 
-<h3>The Business Logic/Controller Service Tier</h3>
+<pre lang="cs">
+// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
+// Cancel Method called from the Button
+protected void Cancel()
+{
+    // Set the boolean properties
+    this.ShowExitConfirmation = false;
+    this.NavigationCancelled = false;
+    // Sort the Router session state
+    this.RouterSessionService.NavigationCancelledUrl = string.Empty;
+    // Sort the component state based on the edit state
+    if (this.IsClean) this.AlertMessage.ClearAlert();
+    else this.AlertMessage.SetAlert
+         ($&quot;{this.Service.RecordConfiguration.RecordDescription} Changed&quot;, 
+         Bootstrap.ColourCode.warning);
+    // Trigger a component State update - buttons and alert need to be sorted
+    this.UpdateState();
+}</pre>
 
-<p>Controllers are normally configured as Scoped Services and then further restricted using OwningComponentBase in the UI when needed.</p>
+<h5>Navigation Buttons</h5>
 
-<p>The controller tier interface and base class are generic and reside in the CEC.Blazor library. Two interfaces <code>IControllerService</code> and <code>IControllerPagingService</code> define the required functionality. Both are implemented in the BaseControllerService class.</p>
-
-<p>The code for the <a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Services/Interfaces/IControllerService.cs">IControllerService</a>, <a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Services/Interfaces/IControllerPagingService.cs">IControllerPagingService</a> and <a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Services/BaseControllerService.cs">BaseControllerService</a> are too long to show here. We&#39;ll cover most of the functionality when we look at how the UI layer interfaces with the controller layer.</p>
-
-<p>The main functionality implemented is:</p>
-
-<ol>
-	<li>Properties to hold the current record and recordset and their status.</li>
-	<li>Properties and methods - defined in <code>IControllerPagingService</code> - for UI paging operations on large datasets.</li>
-	<li>Properties and methods to sort the the dataset.</li>
-	<li>Properties and methods to track the edit status of the record (Dirty/Clean).</li>
-	<li>Methods to implement CRUD operations through the IDataService Interface.</li>
-	<li>Events triggered on record and record set changes. Used by the UI to control page refreshes.</li>
-	<li>Methods to reset the Controller during routing to a new page that uses the same scoped instance of the controller.</li>
-</ol>
-
-<p>All code needed for the above functionality is boilerplated in the base class. Implementing specific record based controllers is a simple task with minimal coding.</p>
-
-<h4>WeatherForecastControllerService</h4>
-
-<p>The class:</p>
-
-<ol>
-	<li>Implements the class constructor that gets the required DI services, sets up the base class and sets the default sort column for db dataset paging and sorting.</li>
-	<li>Gets the Dictionary object for the Outlook Enum Select box in the UI.</li>
-</ol>
-
-<p>Note that the data service used is the <code>IWeatherForecastDataService</code> configured in Services. For WASM this is <code>WeatherForecastWASMDataService</code> and for Server or the API EASM Server this is <code>WeatherForecastServerDataService</code>.</p>
+<p>Various exit buttons are wired to and button handler call <code>NavigateTo</code>.</p>
 
 <pre lang="cs">
-// CEC.Weather/Controllers/ControllerServices/WeatherForecastControllerService.cs
-public class WeatherForecastControllerService : BaseControllerService&lt;DbWeatherForecast, WeatherForecastDbContext&gt;, IControllerService&lt;DbWeatherForecast, WeatherForecastDbContext&gt;
+// CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs
+protected virtual void NavigateTo(PageExitType exittype)
 {
-    /// List of Outlooks for Select Controls
-    public SortedDictionary&lt;int, string&gt; OutlookOptionList =&gt; Utils.GetEnumList&lt;WeatherOutlook&gt;();
+    this.NavigateTo(new EditorEventArgs(exittype));
+}
 
-    public WeatherForecastControllerService(NavigationManager navmanager, IConfiguration appconfiguration, IWeatherForecastDataService weatherForecastDataService) : base(appconfiguration, navmanager)
+protected override void NavigateTo(EditorEventArgs e)
+{
+    if (IsService)
     {
-        this.Service = weatherForecastDataService;
-        this.DefaultSortColumn = &quot;WeatherForecastID&quot;;
+        //check if record name is populated and if not populate it
+        if (string.IsNullOrEmpty(e.RecordName)) 
+            e.RecordName = this.Service.RecordConfiguration.RecordName;
+
+        // check if the id is set for view or edit.  If not, sets it.
+        if ((e.ExitType == PageExitType.ExitToEditor || 
+             e.ExitType == PageExitType.ExitToView) &amp;&amp; e.ID == 0) e.ID = this._ID;
+        base.NavigateTo(e);
     }
 }</pre>
 
-<h4>WeatherForecastController</h4>
-
-<p>While it&#39;s not a service, the <code>WeatherForecastController</code> is the final bit of the data layers to cover. It uses <code>IWeatherForecastDataService</code> to access it&#39;s data service and makes the same calls as the ControllerService into the DataService to access and return the requested data sets. I&#39;ve not found a way yet to abstract this, so we need to implement one per record.</p>
+<p>These propagate down to <code>NavigateTo</code> in <code>ApplicationComponentBase</code>.</p>
 
 <pre lang="cs">
-// CEC.Blazor.WASM.Server/Controllers/WeatherForecastController.cs
-[ApiController]
-public class WeatherForecastController : ControllerBase
+// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
+// Structured approach to organising record CRUD routing
+protected virtual void NavigateTo(EditorEventArgs e)
 {
-    protected IWeatherForecastDataService DataService { get; set; }
-
-    private readonly ILogger&lt;WeatherForecastController&gt; logger;
-
-    public WeatherForecastController(ILogger&lt;WeatherForecastController&gt; logger, IWeatherForecastDataService weatherForecastDataService)
+    switch (e.ExitType)
     {
-        this.DataService = weatherForecastDataService;
-        this.logger = logger;
+        case PageExitType.ExitToList:
+            this.NavManager.NavigateTo($&quot;/{e.RecordName}/&quot;);
+            break;
+        case PageExitType.ExitToView:
+            this.NavManager.NavigateTo($&quot;/{e.RecordName}/View?id={e.ID}&quot;);
+            break;
+        case PageExitType.ExitToEditor:
+            this.NavManager.NavigateTo($&quot;/{e.RecordName}/Edit?id={e.ID}&quot;);
+            break;
+        case PageExitType.SwitchToEditor:
+            this.NavManager.NavigateTo($&quot;/{e.RecordName}/Edit?id={e.ID}&quot;);
+            break;
+        case PageExitType.ExitToNew:
+            this.NavManager.NavigateTo($&quot;/{e.RecordName}/New?qid={e.ID}&quot;);
+            break;
+        case PageExitType.ExitToLast:
+            if (!string.IsNullOrEmpty(this.RouterSessionService.ReturnRouteUrl)) 
+                this.NavManager.NavigateTo(this.RouterSessionService.ReturnRouteUrl);
+            this.NavManager.NavigateTo(&quot;/&quot;);
+            break;
+        case PageExitType.ExitToRoot:
+            this.NavManager.NavigateTo(&quot;/&quot;);
+            break;
+        default:
+            break;
     }
-
-    [MVC.Route(&quot;weatherforecast/list&quot;)]
-    [HttpGet]
-    public async Task&lt;List&lt;DbWeatherForecast&gt;&gt; GetList() =&gt; await DataService.GetRecordListAsync();
-
-    [MVC.Route(&quot;weatherforecast/count&quot;)]
-    [HttpGet]
-    public async Task&lt;int&gt; Count() =&gt; await DataService.GetRecordListCountAsync();
-
-    [MVC.Route(&quot;weatherforecast/get&quot;)]
-    [HttpGet]
-    public async Task&lt;DbWeatherForecast&gt; GetRec(int id) =&gt; await DataService.GetRecordAsync(id);
-
-    [MVC.Route(&quot;weatherforecast/read&quot;)]
-    [HttpPost]
-    public async Task&lt;DbWeatherForecast&gt; Read([FromBody]int id) =&gt; await DataService.GetRecordAsync(id);
-
-    [MVC.Route(&quot;weatherforecast/update&quot;)]
-    [HttpPost]
-    public async Task&lt;DbTaskResult&gt; Update([FromBody]DbWeatherForecast record) =&gt; await DataService.UpdateRecordAsync(record);
-
-    [MVC.Route(&quot;weatherforecast/create&quot;)]
-    [HttpPost]
-    public async Task&lt;DbTaskResult&gt; Create([FromBody]DbWeatherForecast record) =&gt; await DataService.CreateRecordAsync(record);
-
-    [MVC.Route(&quot;weatherforecast/delete&quot;)]
-    [HttpPost]
-    public async Task&lt;DbTaskResult&gt; Delete([FromBody] DbWeatherForecast record) =&gt; await DataService.DeleteRecordAsync(record);
 }</pre>
 
 <h3>Wrap Up</h3>
 
-<p>This article demonstrates how to abstract the data and controller tier code into a reuseable library.</p>
+<p>That wraps up this section. We&#39;ve looked at the Edit process in detail to see how the code works. The next section looks in detail at UI Controls seen in the razor markup in this article.</p>
 
 <p>Some key points to note:</p>
 
 <ol>
-	<li>Aysnc code is used wherever possible. The data access functions are all async.</li>
-	<li>Generics make much of the boilerplating possible. They create complexity, but are worth the effort.</li>
-	<li>The use of Interfaces for Dependancy Injection and UI boilerplating.</li>
+	<li>The differences in code between a Blazor Server and a Blazor WASM project are very minor.</li>
+	<li>Most of the code resides in generic boilerplate classes.</li>
 </ol>
 
-<p>The next section looks at the Presentation Layer / UI framework.</p>
+<h2>History</h2>
+
+<ul>
+	<li>18<sup>th</sup> September, 2020: Initial version</li>
+</ul>
