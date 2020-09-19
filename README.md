@@ -3,7 +3,16 @@
 
 ## Introduction
 
-Part 2 describes techniques and methodologies for abstracting the data and business logic layers into boilerplate code in a library.  This article does the same with the presentation layer.
+This is the third in a set of articles looks at how to build and structure a real Database Application in Blazor. The five articles are:
+
+
+1. [Project Structure and Framework]("https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P")
+2. [Services - Building the CRUD Data Layers]("https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S")
+3. View Components - Building the CRUD Presentation Layer
+4. UI Components - Building HTML/CSS Controls
+5. A walk through detailing how to add weather stations and weather station data to the application
+
+This article looks in detail at building reusable CRUD presentation layer components, and deploying them into both Server and WASM projects.
 
 ### Sample Project and Code
 
@@ -11,21 +20,20 @@ See the [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor
 
 ### The Base Forms
 
-The CRUD UI is implemented as a set of boilerplate components inheriting from *OwningComponentBase*.  *OwningComponentBase* is used for control over the scope of Scoped Services.  Code is available on the Github site and linked at appropriate places in this article.
+The CRUD UI components inherit from *OwningComponentBase*.  We use *OwningComponentBase* in preference to  *ComponentBase* because it gives control over the scope of Scoped Services. Not all code is shown - some class are too big to include in this article.  All source files can be viewed on the Github site, and there are references or links to code files at appropriate places in the article.
 
 #### ApplicationComponentBase
 
 [CEC.Blazor/Components/Base.ApplicationComponentBase.cs](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ApplicationComponentBase.cs)
 
-*ApplicationComponentBase* is the base component and contains all the common client application code:
+*ApplicationComponentBase* is the base component and contains all the common client application code.  It provides:
 
   1. Injection of common services, such as Navigation Manager and Application Configuration.
   2. Authentication and user management.
   3. Navigation and Routing.
+  4. A set of Common Properties that are used by th inheriting classes.
 
 #### ControllerServiceComponent and Its Children
-
-[CEC.Blazor/Components/Base.ControllerServiceComponentBase.cs](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ControllerServiceComponentBase.cs)
 
 [*ControllerServiceComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ControllerServiceComponentBase.cs) is the base CRUD component.
 
@@ -36,13 +44,15 @@ There are three inherited classes for specific CRUD operations:
 
 All common code resides in *ControllerServiceComponent*, specific code in the inherited class.
 
+These classes are relatively complex and long.  We'll examine their functionality by looking at their deployment in the sample projects and then stepping back into the base components to see how their specific functionility is implemented.
+
 ### Implementing CRUD Pages
 
-We'll look at the editor in detail to see how the components are structured and edit functionality implemented.
+We'll look at edit operations in detail to see how the components are structured and edit functionality implemented.
 
 #### The View
 
-The routed view is a very simple component.  We separate the actual view component from the routed view.  It's used in other pages such as the modal dialog viewer.
+The routed view is a very simple component.  The actual code is implemented in a separate form component that is also used in the modal dialog editor.
 
 ```c#
 // CEC.Blazor.WASM.Client/Routes/WeatherForecastEditorView.razor
@@ -56,7 +66,7 @@ The routed view is a very simple component.  We separate the actual view compone
 
 #### The Form
 
-Again a relatively simple component programmatically. 
+The code file is relatively simple, with most of the detail in the razor markup file. 
 
 ```C#
 // CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor
@@ -76,9 +86,9 @@ public partial class WeatherEditorForm : EditRecordComponentBase<DbWeatherForeca
 }
 ```
 
-This gets and assigns the specific ControllerService through DI to the Service Property [IContollerService].
+This gets and assigns the specific ControllerService through DI to the Service Property *IContollerService*.
 
-The Razor Markup below is an abbreviated version of the actual file.  This makes extensive use of UIControls which will be discussed in detail in the next article.  The comments provide explanation. 
+The Razor Markup below is an abbreviated version of the actual file.  This makes extensive use of UIControls which will be covered in detail in the next article.  The comments provide explanation. 
 ```C#
 // CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor.cs
 // UI Card is a Bootstrap Card
@@ -135,9 +145,11 @@ The Razor Markup below is an abbreviated version of the actual file.  This makes
 ```
 #### Base Form Code
 
+At this point we step down into code in the base forms.  Each function/code block is annotated with the name of the source component.  We look at code blocks in the class inheritance hierarchy in the order in which is is executed.
+
 ##### OnInitializedAsync
 
-The code block below shows the two OnInitializedAsync methods in the class hierarchy.
+The code block below shows the two OnInitializedAsync methods.
 
 *OnInitializedAsync* is implemented from top down (local code is run before calling the base method).
 
@@ -171,7 +183,7 @@ protected async override Task OnInitializedAsync()
 
 ##### OnParametersSetAsync
 
-*OnParametersSetAsync* is implemented from bottom up (the base method is called before any local code).
+*OnParametersSetAsync* is implemented from bottom up (base method is called before any local code).
 
 ```C#
 // CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
@@ -185,7 +197,9 @@ protected async override Task OnParametersSetAsync()
 
 ##### LoadRecordAsync
 
-The record loading code is broken out of *OnParametersSetAsync* as it's used outside the component lifecycle methods.  It's implemented from bottom up (the base method is called before any local code).
+The record loading code is broken out as it's used outside the component lifecycle methods.  It's implemented from bottom up (base method is called before any local code).
+
+The primary record load functionaility is in *RecordComponentBase* which gets and loads the record based on ID.  *EditComponentBase* adds the extra functionality for editing rather than just viewing the record. 
 
 ```C#
 // CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
@@ -271,7 +285,8 @@ protected virtual void OnNavigationCancelled(object sender, EventArgs e)
 ```
 ```c#
 // CEC.Blazor/Components/BaseForms/EditComponentBase.cs
-// Event handler for the RecordFromControls FieldChanged Event
+// Event handler for the Record Form Controls FieldChanged Event
+// wired to each control through a cascaded parameter
 protected virtual void RecordFieldChanged(bool isdirty)
 {
     if (this.EditContext != null)
@@ -299,10 +314,10 @@ protected virtual void RecordFieldChanged(bool isdirty)
 ```
 ```c#
 // CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-// Event handler for SameRoute event raised by the router.  Check if we need to load a new record
+// Event handler for SameRoute event raised by the router.  The ID Querystring may have changed and we need to load a new record
 protected async void OnSameRouteRouting(object sender, EventArgs e)
 {
-    // Gets the record - checks for a new ID in the querystring and if we have one loads the records
+    // Gets the record - checks for a new ID in the querystring and if we have one loads the new record
     await LoadRecordAsync();
 }
 ```
@@ -324,11 +339,11 @@ protected virtual async Task<bool> Save()
         ok = await this.Service.SaveRecordAsync();
         if (ok)
         {
-            // Set the EditContext State
+            // Reset the EditContext State to clean
             this.EditContext.MarkAsUnmodified();
             // Set the boolean properties
             this.ShowExitConfirmation = false;
-            // Sort the Router session state
+            // Sort the Router session state to clean
             this.RouterSessionService.NavigationCancelledUrl = string.Empty;
         }
         // Set the alert message to the return result
@@ -353,23 +368,23 @@ protected virtual async void SaveAndExit()
 /// Exit Method called from the Button
 protected virtual void Exit()
 {
-    // Check if we are free (we have a clean record) to exit or need confirmation
+    // Check if we are free to exit (we have a clean record) or need confirmation
     if (this.IsClean) ConfirmExit();
     else this.ShowExitConfirmation = true;
 }
 ```
 ```c#
 // CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Confirm Exit Method called from the Button
+/// Confirm Exit Method called from the Button - bail out regardless
 protected virtual void ConfirmExit()
 {
-    // To escape a dirty component set IsClean manually and navigate.
+    // Override the sate to clean - the router only lets us escape if the state is clean.
     this.Service.SetClean();
     // Sort the Router session state
     this.RouterSessionService.NavigationCancelledUrl = string.Empty;
     //turn off page exit checking
     this.RouterSessionService.SetPageExitCheck(false);
-    // Sort the exit strategy
+    // Sort the exit strategy - where does the user want to exit to.
     if (this.IsModal) ModalExit();
     else
     {
@@ -400,7 +415,7 @@ protected void Cancel()
 
 ##### Navigation Buttons
 
-Various exit buttons are wired to and button handler call *NavigateTo*.
+*NavigateTo* provides a structured approach to navigation between, and exiting from, forms.  Exit buttons are wired directly to *NavigateTo* and buttons such as SaveAndExit call it.  
 
 ```C#
 // CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs
@@ -425,7 +440,6 @@ protected override void NavigateTo(EditorEventArgs e)
 These propagate down to *NavigateTo* in *ApplicationComponentBase*
 ```c#
 // CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-// Structured approach to organising record CRUD routing
 protected virtual void NavigateTo(EditorEventArgs e)
 {
     switch (e.ExitType)
@@ -459,8 +473,9 @@ protected virtual void NavigateTo(EditorEventArgs e)
 ```
 
 ### Wrap Up
-That wraps up this section.  We've looked at the Edit process in detail to see how the code works.  The next section looks in detail at UI Controls seen in the razor markup in this article.
+That wraps up this section.  We've looked at the Edit process in detail to see how the code works.  The Viewer is simpler form of the editor.  I'll look in more detail at the List components in a separate stand alone article.   The next section looks in detail at UI Controls seen in the razor markup in this article.
 
 Some key points to note:
 1. The differences in code between a Blazor Server and a Blazor WASM project are very minor.
-2. Most of the code resides in generic boilerplate classes.
+2. Almost all the functionality needed is implemented in the library components.  Most of the application code is Razor markup for the individual record fields.
+3. Extensive use of Async functionality iin the components and CRUD data access.
