@@ -10,7 +10,8 @@ This is the third in a series of articles looking at how to build and structure 
 2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
 3. View Components - CRUD Edit and View Operations in the UI
 
-* Further articles wil look at List Operations in the UI
+Further articles will look at 
+* List Operations in the UI
 * UI Components - Building HTML/CSS Controls
 * A walk through detailing how to add more records to the application - in this case weather stations and weather station data.
 
@@ -35,7 +36,7 @@ All CRUD UI components inherit from *OwningComponentBase*.  We use *OwningCompon
   5. State Updating.
   6. A set of Common Properties that are used by th inheriting classes.
 
-#### ControllerServiceComponent and Its Children
+#### ControllerServiceComponent and It's Children
 
 [*ControllerServiceComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs) is the base CRUD component.
 

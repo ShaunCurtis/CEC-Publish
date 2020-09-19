@@ -1,7 +1,20 @@
-# Buildinging a Database Appication in Blazor 
+# Building a Database Appication in Blazor 
 ## Part 4 - UI Components
 
-Part 3 described the techniques and methodologies for building boilerplate CRUD UI Components in a library.  This article takes a more general look at UI components and how to structure them.
+## Introduction
+
+This is the fourth in a series of articles looking at how to build and structure a real Database Application in Blazor. The articles so far are:
+
+1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
+2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
+3. View Components - CRUD Edit and View Operations in the UI
+4. UI Components - Building HTML/CSS Controls
+
+Further articles will look at 
+* List Operations in the UI
+* A walk through detailing how to add more records to the application - in this case weather stations and weather station data.
+
+This article looks at the components we use in the UI and then focuses on how generic UI Components from HTML and CSS.
 
 ### Sample Project and Code
 
@@ -9,7 +22,7 @@ See the [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor
 
 ### Components
 
-For a detailed look at components read my Article [A Dive into Blazor Compoents](https://www.codeproject.com/Articles/5277618/A-Dive-into-Blazor-Components).
+For a detailed look at components read my article [A Dive into Blazor Components](https://www.codeproject.com/Articles/5277618/A-Dive-into-Blazor-Components).
 
 I divide components into four categories:
 1. Views - these are routed components/views.
@@ -19,7 +32,7 @@ I divide components into four categories:
 
 ### Views
 
-Views are specific to the application.  in my applications Views live in the *Routes* folder.
+Views are specific to the application.  Views live in the *Routes* folder.
 
 The Weather Forecast Viewer and List Views are shown below.
 ```html
@@ -58,7 +71,7 @@ The list view defines a UIOptions object that control various list control displ
 
 ### Forms
 
-Forms are also Project specific.  In the Weather Application they reside in the CEC.Weather library as they are used by both the Server and WASM projects.  
+Forms are also project specific.  In the Weather Application they reside in the CEC.Weather library as they are used by both the Server and WASM projects.  
 
 The code below shows the Weather Viewer.  It's all UI Controls, no HTML markup.  The markup lives inside the controls - we'll look at some example UI Controls later.
 
@@ -155,7 +168,7 @@ The application uses UI Controls to separate HTML and CSS markup from Views and 
 
 ##### UIBase
 
-All UI Controls inherit from *UIBase*.  This implements *IComponent*.  It doesn't inherit from *ComponentBase* because we don't need the complexity it implements.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
+All the library UI Controls inherit from *UIBase*.  This implements *IComponent*.  No *ComponentBase* because we don't need it's complexity.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
 
 It builds a HTML DIV block that you can turn on or off.
 
@@ -227,12 +240,11 @@ public class UIButton : UIBootstrapBase
     {
         if (this.Show)
         {
-            var i = -1;
-            builder.OpenElement(i++, this._Tag);
-            builder.AddAttribute(i++, "type", this.ButtonType);
-            builder.AddAttribute(i++, "class", this._Css);
-            builder.AddAttribute(i++, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, this.ButtonClick));
-            builder.AddContent(i++, ChildContent);
+            builder.OpenElement(0, this._Tag);
+            builder.AddAttribute(1, "type", this.ButtonType);
+            builder.AddAttribute(2, "class", this._Css);
+            builder.AddAttribute(3, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, this.ButtonClick));
+            builder.AddContent(4, ChildContent);
             builder.CloseElement();
         }
     }
