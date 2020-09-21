@@ -1,574 +1,115 @@
 # Building a Database Appication in Blazor 
-## Part 3 - View Components - CRUD Edit and View Operations in the UI
+## Part 4 - UI Components
 
 ## Introduction
 
-This is the third in a series of articles looking at how to build and structure a real Database Application in Blazor. The articles so far are:
-
+This is the fourth article in the series looking at how to build and structure a real Database Application in Blazor. The articles so far are:
 
 1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
 2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
 3. View Components - CRUD Edit and View Operations in the UI
+4. UI Components - Building HTML/CSS Controls
 
 Further articles will look at 
 * List Operations in the UI
-* UI Components - Building HTML/CSS Controls
 * A walk through detailing how to add more records to the application - in this case weather stations and weather station data.
 
-This article looks in detail at building reusable CRUD presentation layer components, specifically Edit and View functionality - and using them into both Server and WASM projects.
+This article looks at the components we use in the UI and then focuses on how to build generic UI Components from HTML and CSS.
 
 ### Sample Project and Code
 
-See the [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor) for the libraries and sample projects.
+All the sample code and libraries are on GitHub - [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor).
 
-### The Base Forms
+### Components
 
-All CRUD UI components inherit from *OwningComponentBase*.  We use *OwningComponentBase* in preference to  *ComponentBase* because it gives control over the scope of Scoped Services. Not all the code is shown in the article.  Some class are too big.  All source files can be viewed on the Github site, and I include references or links to specific code files at appropriate places in the article.  Much of the information detail is in the comments in the code sections.
+For a detailed look at components read my article [A Dive into Blazor Components](https://www.codeproject.com/Articles/5277618/A-Dive-into-Blazor-Components).
 
-#### ApplicationComponentBase
+I divide components into four categories:
+1. Views - these are routed components/views.
+2. Forms - there can be one or more forms within a View, and one or more UIControls within a form.  Edit/Display/List components are all forms.
+3. UIControls - these are collections of HTML markup and CSS. Similar to Form Controls.
+4. Layouts - these a special components used to layout a View.
 
-[*ApplicationComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs) is the base component and contains all the common client application code.  It provides:
+### Views
 
-  1. Injection of common services, such as Navigation Manager, AuthenicationState, RouterSessionService and Application Configuration.
-  2. Authentication and user management.
-  3. Navigation and Routing through *NavigateTo*.
-  4. Core modal dialog event handling (for when a component is wrapping in a Modal Dialog).
-  5. State Updating.
-  6. A set of Common Properties that are used by th inheriting classes.
+Views are specific to the application and live in the *Routes* folder.
 
-#### ControllerServiceComponent and It's Children
+The Weather Forecast Viewer and List Views are shown below.
+```cs
+// CEC.Blazor.Server/Routes/WeatherForecastViewerView.cs
+@page "/WeatherForecast/View"
 
-[*ControllerServiceComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs) is the base CRUD component.
+@namespace CEC.Blazor.Server.Pages
 
-There are three inherited classes for specific CRUD operations:
-1. [*ListComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ListComponentBase.cs) for all list pages
-2. [*RecordComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/RecordComponentBase.cs) for displaying individual records.
-3. [*EditComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs) for CUD *Create/Update/Delete* operations.
-
-Common code resides in *ControllerServiceComponent*, specific code in the inherited class.
-
-We'll examine the functionality in these components as look at their deployment in the sample projects, and step down into the base components to see how their specific functionility is implemented.
-
-## Implementing Edit Pages
-
-### The View
-
-The routed view is a very simple.  It contains the routes and the component to load.  The editor component is implemented separately so it can be used in both the WASM and Server projects and in the modal dialog editor.
-
-```c#
-// CEC.Blazor.WASM.Client/Routes/WeatherForecastEditorView.razor
-@page "/WeatherForecast/New"
-@page "/WeatherForecast/Edit"
 @inherits ApplicationComponentBase
-@namespace CEC.Blazor.WASM.Client.Routes
 
-<WeatherEditorForm></WeatherEditorForm>
+<WeatherViewer></WeatherViewer>
 ```
+The list view defines a UIOptions object that control various list control display options.
+```cs
+// CEC.Blazor.Server/Routes/WeatherForecastListView.cs
+@page "/WeatherForecast"
 
-### The Form
+@layout MainLayout
 
-The code file is relatively simple, with most of the detail in the razor markup.
+@namespace CEC.Blazor.Server.Routes
 
-```C#
-// CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor
-public partial class WeatherEditorForm : EditRecordComponentBase<DbWeatherForecast, WeatherForecastDbContext>
-{
-    [Inject]
-    public WeatherForecastControllerService ControllerService { get; set; }
+@inherits ApplicationComponentBase
 
-    private string CardCSS => this.IsModal ? "m-0" : "";
+<WeatherList UIOptions="this.UIOptions" ></WeatherList>
 
-    protected async override Task OnInitializedAsync()
+@code {
+    public UIOptions UIOptions => new UIOptions()
     {
-        // Assign the correct controller service
-        this.Service = this.ControllerService;
-        await base.OnInitializedAsync();
-    }
+        ListNavigationToViewer = true,
+        ShowButtons = true,
+        ShowAdd = true,
+        ShowEdit = true
+    };
 }
 ```
 
-This gets and assigns the specific ControllerService through DI to the *IContollerService Service* Property.
+### Forms
 
-The Razor Markup below is an abbreviated version of the full file.  This makes extensive use of UIControls which will be covered in detail in a later article.  See the comments for detail. 
-```C#
-// CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor.cs
-// UI Card is a Bootstrap Card
-<UICard IsCollapsible="false">
+Forms are also project specific, but are common to both WASM and Server deployments.  In the Weather Application they reside in the CEC.Weather library.  
+
+The code below shows the Weather Viewer.  It's all UI Controls, no HTML markup.  The markup lives inside the controls - we'll look at some example UI Controls later.
+
+```html
+// CEC.Weather/Components/Forms/WeatherForecastViewerForm.razor
+<UICard>
     <Header>
         @this.PageTitle
     </Header>
     <Body>
-        // Cascades the Event Handler in the form for RecordChanged.  Picked up by each FormControl and fired when a value changes in the FormControl
-        <CascadingValue Value="@this.RecordFieldChanged" Name="OnRecordChange" TValue="Action<bool>">
-            // Error handler - only renders it's content when the record exists and is loaded
-            <UIErrorHandler IsError="@this.IsError" IsLoading="this.IsDataLoading" ErrorMessage="@this.RecordErrorMessage">
-                <UIContainer>
-                    // Standard Blazor EditForm control
-                    <EditForm EditContext="this.EditContext">
-                        // Fluent ValidationValidator for the form
-                        <FluentValidationValidator DisableAssemblyScanning="@true" />
-                        .....
-                        // Example data value row with label and edit control
-                        <UIFormRow>
-                            <UILabelColumn Columns="4">
-                                Record Date:
-                            </UILabelColumn>
-                            <UIColumn Columns="4">
-                                // Note the Record Value bind to the record shadow copy to detect changes from the orginal stored value
-                                <FormControlDate class="form-control" @bind-Value="this.Service.Record.Date" RecordValue="this.Service.ShadowRecord.Date"></FormControlDate>
-                            </UIColumn>
-                        </UIFormRow>
-                        ..... // more form rows here
-                    </EditForm>
-                </UIContainer>
-            </UIErrorHandler>
-            // Container for the buttons - not record dependant so outside the error handler to allow navigation if UIErrorHandler is in error.
+        <UIErrorHandler IsError="this.IsError" IsLoading="this.IsDataLoading" ErrorMessage="@this.RecordErrorMessage">
             <UIContainer>
                 <UIRow>
-                    <UIColumn Columns="7">
-                        // Bootstrap alert to display any messages
-                        <UIAlert Alert="this.AlertMessage" SizeCode="Bootstrap.SizeCode.sm"></UIAlert>
+                    <UILabelColumn Columns="2">
+                        Date
+                    </UILabelColumn>
+                    <UIColumn Columns="2">
+                        <FormControlPlainText Value="@this.Service.Record.Date.AsShortDate()"></FormControlPlainText>
                     </UIColumn>
-                    <UIButtonColumn Columns="5">
-                        ....
-                        // UIButton is a Bootstrap button.  Show controls whether it's displayed.
-                        // For example Save is displayed when the Service Record is Dirty and the record has loaded. 
-                        <UIButton Show="(!this.IsClean) && this.IsLoaded" ClickEvent="this.Save" ColourCode="Bootstrap.ColourCode.save">Save</UIButton>
-                        <UIButton Show="this.ShowExitConfirmation && this.IsLoaded" ClickEvent="this.ConfirmExit" ColourCode="Bootstrap.ColourCode.danger_exit">Exit Without Saving</UIButton>
-                        <UIButton Show="(!this.NavigationCancelled) && !this.ShowExitConfirmation" ClickEvent="(e => this.NavigateTo(PageExitType.ExitToList))" ColourCode="Bootstrap.ColourCode.nav">Exit To List</UIButton>
-                        <UIButton Show="(!this.NavigationCancelled) && !this.ShowExitConfirmation" ClickEvent="this.Exit" ColourCode="Bootstrap.ColourCode.nav">Exit</UIButton>
-                    </UIButtonColumn>
+                    <UILabelColumn Columns="2">
+                        ID
+                    </UILabelColumn>
+                    <UIColumn Columns="2">
+                        <FormControlPlainText Value="@this.Service.Record.ID.ToString()"></FormControlPlainText>
+                    </UIColumn>
+                    <UILabelColumn Columns="2">
+                        Frost
+                    </UILabelColumn>
+                    <UIColumn Columns="2">
+                        <FormControlPlainText Value="@this.Service.Record.Frost.AsYesNo()"></FormControlPlainText>
+                    </UIColumn>
                 </UIRow>
-            </UIContainer>
-        </CascadingValue>
-    </Body>
-</UICard>
-```
-### Base Form Code
-
-At this point we step down from project specific code, to generic library base forms.  Each function/code block is annotated with the name of the source component.  Code blocks/Methods/Base Methods are ordered in the order in which they are executed.
-
-#### Component Event Code
-
-##### OnInitializedAsync
-
-The code block below shows the two OnInitializedAsync methods.
-
-*OnInitializedAsync* is implemented from top down (local code is run before calling the base method).
-
-```c#
-// CEC.Weather/Components/Forms/WeatherEditorForm.razor.cs
-protected async override Task OnInitializedAsync()
-{
-    // Assign the correct controller service
-    this.Service = this.ControllerService;
-    // Set the delay on the record load as this is a demo project
-    this.DemoLoadDelay = 250;
-    await base.OnInitializedAsync();
-}
-
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-protected async override Task OnInitializedAsync()
-{
-    // Resets the record to blank 
-    await this.Service.ResetRecordAsync();
-    await base.OnInitializedAsync();
-}
-
-// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-protected async override Task OnInitializedAsync()
-{
-    // Gets the user if we have an AuthenticationState
-    if (this.AuthenticationState != null) await this.GetUserAsync();
-    await base.OnInitializedAsync();
-}
-```
-
-##### OnParametersSetAsync
-
-*OnParametersSetAsync* is implemented from bottom up (base method called before any local code).
-
-```C#
-// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-protected async override Task OnParametersSetAsync()
-{
-    await base.OnParametersSetAsync();
-    // Get the record if required - see below for method detail
-    await this.LoadRecordAsync();
-}
-```
-
-##### LoadRecordAsync
-
-Record loading code is broken out so it can be used outside the component lifecycle methods.  It's implemented from bottom up (base method is called before any local code).
-
-The primary record load functionaility is in *RecordComponentBase* which gets and loads the record based on ID.  *EditComponentBase* adds the extra functionality for editing rather than just viewing the record. 
-
-```C#
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-protected virtual async Task LoadRecordAsync()
-{
-    if (this.IsService)
-    {
-        // Set the Loading flag and call StateNasChanged to force UI changes 
-        // in this case making the UIErrorHandler show the loading spinner 
-        this.IsDataLoading = true;
-        StateHasChanged();
-
-        // Check if we have a query string value in the Route for ID.  If so use it
-        if (this.NavManager.TryGetQueryString<int>("id", out int querystringid)) this.ID = querystringid > -1 ? querystringid : this._ID;
-
-        // Check if the component is a modal.  If so get the supplied ID
-        else if (this.IsModal && this.Parent.Options.Parameters.TryGetValue("ID", out object modalid)) this.ID = (int)modalid > -1 ? (int)modalid : this.ID;
-
-        // make this look slow to demo the spinner
-        if (this.DemoLoadDelay > 0) await Task.Delay(this.DemoLoadDelay);
-
-        // Get the current record - this will check if the id is different from the current record and only update if it's changed
-        await this.Service.GetRecordAsync(this._ID, false);
-
-        // Set the error message - it will only be displayed if we have an error
-        this.RecordErrorMessage = $"The Application can't load the Record with ID: {this._ID}";
-
-        // Set the Loading flag and call statehaschanged to force UI changes 
-        // in this case making the UIErrorHandler show the record or the error message 
-        this.IsDataLoading = false;
-        StateHasChanged();
-    }
-}
-
-// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
-protected async override Task LoadRecordAsync()
-{
-    await base.LoadRecordAsync();
-
-    //set up the Edit Context
-    this.EditContext = new EditContext(this.Service.Record);
-
-    // Get the actual page Url from the Navigation Manager
-    this.RouteUrl = this.NavManager.Uri;
-    // Set up this page as the active page in the router service
-    this.RouterSessionService.ActiveComponent = this;
-    // Wire up the router NavigationCancelled event
-    this.RouterSessionService.NavigationCancelled += this.OnNavigationCancelled;
-}
-```
-
-##### OnAfterRenderAsync
-
-*OnAfterRenderAsync* is implemented from bottom up (base called before any local code is executed).
-
-```C#
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-protected async override Task OnAfterRenderAsync(bool firstRender)
-{
-    await base.OnAfterRenderAsync(firstRender);
-    // Wire up the SameComponentNavigation Event - i.e. we potentially have a new record to load in the same View 
-    if (firstRender) this.RouterSessionService.SameComponentNavigation += this.OnSameRouteRouting;
-}
-```
-
-#### Event Handlers
-
-There are three event handlers wired up in the Component load events.
-
-```c#
-// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
-// Event handler for a navigation cancelled event raised by the router
-protected virtual void OnNavigationCancelled(object sender, EventArgs e)
-{
-    // Set the boolean properties
-    this.NavigationCancelled = true;
-    this.ShowExitConfirmation = true;
-    // Set up the alert
-    this.AlertMessage.SetAlert("<b>THIS RECORD ISN'T SAVED</b>. Either <i>Save</i> or <i>Exit Without Saving</i>.", Bootstrap.ColourCode.danger);
-    // Trigger a component State update - buttons and alert need to be sorted
-    InvokeAsync(this.StateHasChanged);
-}
-```
-```c#
-// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
-// Event handler for the Record Form Controls FieldChanged Event
-// wired to each control through a cascaded parameter
-protected virtual void RecordFieldChanged(bool isdirty)
-{
-    if (this.EditContext != null)
-    {
-        // Sort the Service Edit State
-        this.Service.SetClean(!isdirty);
-        // Set the boolean properties
-        this.ShowExitConfirmation = false;
-        this.NavigationCancelled = false;
-        // Sort the component state based on the edit state
-        if (this.IsClean)
-        {
-            this.AlertMessage.ClearAlert();
-            this.RouterSessionService.SetPageExitCheck(false);
-        }
-        else
-        {
-            this.AlertMessage.SetAlert("The Record isn't Saved", Bootstrap.ColourCode.warning);
-            this.RouterSessionService.SetPageExitCheck(true);
-        }
-        // Trigger a component State update - buttons and alert need to be sorted
-        InvokeAsync(this.StateHasChanged);
-    }
-}
-```
-```c#
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-// Event handler for SameRoute event raised by the router.  The ID Querystring may have changed and we need to load a new record
-protected async void OnSameRouteRouting(object sender, EventArgs e)
-{
-    // Gets the record - checks for a new ID in the querystring and if we have one loads the new record
-    await LoadRecordAsync();
-}
-```
-
-#### Action Button Events
-
-There are four event methods triggered by actionbutton clicks (Save,..).
-
-```c#
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Save Method called from the Button
-protected virtual async Task<bool> Save()
-{
-    var ok = false;
-    // Validate the EditContext
-    if (this.EditContext.Validate())
-    {
-        // Save the Record
-        ok = await this.Service.SaveRecordAsync();
-        if (ok)
-        {
-            // Reset the EditContext State to clean
-            this.EditContext.MarkAsUnmodified();
-            // Set the boolean properties
-            this.ShowExitConfirmation = false;
-            // Sort the Router session state to clean
-            this.RouterSessionService.NavigationCancelledUrl = string.Empty;
-        }
-        // Set the alert message to the return result
-        this.AlertMessage.SetAlert(this.Service.TaskResult);
-        // Trigger a component State update - buttons and alert need to be sorted
-        this.UpdateState();
-    }
-    else this.AlertMessage.SetAlert("A validation error occurred.  Check individual fields for the relevant error.", Bootstrap.ColourCode.danger);
-    return ok;
-}
-```
-```c#
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Save and Exit Method called from the Button
-protected virtual async void SaveAndExit()
-{
-    if (await this.Save()) this.ConfirmExit();
-}
-```
-```c#
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Exit Method called from the Button
-protected virtual void Exit()
-{
-    // Check if we are free to exit (we have a clean record) or need confirmation
-    if (this.IsClean) ConfirmExit();
-    else this.ShowExitConfirmation = true;
-}
-```
-```c#
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Confirm Exit Method called from the Button - bail out regardless
-protected virtual void ConfirmExit()
-{
-    // Override the sate to clean - the router only lets us escape if the state is clean.
-    this.Service.SetClean();
-    // Sort the Router session state
-    this.RouterSessionService.NavigationCancelledUrl = string.Empty;
-    //turn off page exit checking
-    this.RouterSessionService.SetPageExitCheck(false);
-    // Sort the exit strategy - where does the user want to exit to.
-    if (this.IsModal) ModalExit();
-    else
-    {
-        // Check if we have a Url the user tried to navigate to - default exit to the root
-        if (!string.IsNullOrEmpty(this.RouterSessionService.NavigationCancelledUrl)) this.NavManager.NavigateTo(this.RouterSessionService.NavigationCancelledUrl);
-        else if (!string.IsNullOrEmpty(this.RouterSessionService.ReturnRouteUrl)) this.NavManager.NavigateTo(this.RouterSessionService.ReturnRouteUrl);
-        else this.NavManager.NavigateTo("/");
-    }
-}
-```
-```c#
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-// Cancel Method called from the Button
-protected void Cancel()
-{
-    // Set the boolean properties
-    this.ShowExitConfirmation = false;
-    this.NavigationCancelled = false;
-    // Sort the Router session state
-    this.RouterSessionService.NavigationCancelledUrl = string.Empty;
-    // Sort the component state based on the edit state
-    if (this.IsClean) this.AlertMessage.ClearAlert();
-    else this.AlertMessage.SetAlert($"{this.Service.RecordConfiguration.RecordDescription} Changed", Bootstrap.ColourCode.warning);
-    // Trigger a component State update - buttons and alert need to be sorted
-    this.UpdateState();
-}
-```
-
-#### Navigation Buttons
-
-*NavigateTo* provides a structured approach to navigation between, and exiting from, forms.  Exit buttons are wired directly to *NavigateTo*, and buttons such as SaveAndExit call it after completing their actions.  
-
-```C#
-// CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs
-protected virtual void NavigateTo(PageExitType exittype)
-{
-    this.NavigateTo(new EditorEventArgs(exittype));
-}
-
-protected override void NavigateTo(EditorEventArgs e)
-{
-    if (IsService)
-    {
-        //check if record name is populated and if not populate it
-        if (string.IsNullOrEmpty(e.RecordName)) e.RecordName = this.Service.RecordConfiguration.RecordName;
-
-        // check if the id is set for view or edit.  If not, sets it.
-        if ((e.ExitType == PageExitType.ExitToEditor || e.ExitType == PageExitType.ExitToView) && e.ID == 0) e.ID = this._ID;
-        base.NavigateTo(e);
-    }
-}
-```
-These propagate down to *NavigateTo* in *ApplicationComponentBase*
-```c#
-// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-protected virtual void NavigateTo(EditorEventArgs e)
-{
-    switch (e.ExitType)
-    {
-        case PageExitType.ExitToList:
-            this.NavManager.NavigateTo($"/{e.RecordName}/");
-            break;
-        case PageExitType.ExitToView:
-            this.NavManager.NavigateTo($"/{e.RecordName}/View?id={e.ID}");
-            break;
-        case PageExitType.ExitToEditor:
-            this.NavManager.NavigateTo($"/{e.RecordName}/Edit?id={e.ID}");
-            break;
-        case PageExitType.SwitchToEditor:
-            this.NavManager.NavigateTo($"/{e.RecordName}/Edit?id={e.ID}");
-            break;
-        case PageExitType.ExitToNew:
-            this.NavManager.NavigateTo($"/{e.RecordName}/New?qid={e.ID}");
-            break;
-        case PageExitType.ExitToLast:
-            if (!string.IsNullOrEmpty(this.RouterSessionService.ReturnRouteUrl)) this.NavManager.NavigateTo(this.RouterSessionService.ReturnRouteUrl);
-            this.NavManager.NavigateTo("/");
-            break;
-        case PageExitType.ExitToRoot:
-            this.NavManager.NavigateTo("/");
-            break;
-        default:
-            break;
-    }
-}
-```
-## Implementing Viewer Pages
-
-### The View
-
-The routed view is a very simple.  It contains the routes and the component to load.
-
-```c#
-// CEC.Blazor.WASM.Client/Routes/WeatherForecastViewerView.razor
-@page "/WeatherForecast/View"
-@namespace CEC.Blazor.WASM.Client.Routes
-@inherits ApplicationComponentBase
-
-<WeatherViewerForm></WeatherViewerForm>
-```
-
-### The Form
-
-The code file is relatively simple, with most of the detail in the razor markup.
-
-```C#
-// CEC.Weather/Components/Forms/WeatherViewerForm.razor
-public partial class WeatherViewerForm : RecordComponentBase<DbWeatherForecast, WeatherForecastDbContext>
-{
-    [Inject]
-    private WeatherForecastControllerService ControllerService { get; set; }
-
-    public override string PageTitle => $"Weather Forecast Viewer {this.Service?.Record?.Date.AsShortDate() ?? string.Empty}".Trim();
-
-    protected async override Task OnInitializedAsync()
-    {
-        this.Service = this.ControllerService;
-        // Set the delay on the record load as this is a demo project
-        this.DemoLoadDelay = 250;
-        await base.OnInitializedAsync();
-    }
-
-    // Demo code to move between record and demo samerouterouting i.e. only the querystring changing 
-    protected void NextRecord(int increment) 
-    {
-        var rec = (this._ID + increment) == 0 ? 1 : this._ID + increment;
-        rec = rec > this.Service.BaseRecordCount ? this.Service.BaseRecordCount : rec;
-        this.NavManager.NavigateTo($"/WeatherForecast/View?id={rec}");
-    }
-}
-```
-
-This gets and assigns the specific ControllerService through DI to the *IContollerService Service* Property.
-
-The Razor Markup below is an abbreviated version of the full file.  This makes extensive use of UIControls which will be covered in detail in a later article.  See the comments for detail. 
-```C#
-// CEC.Weather/Components/Forms/WeatherViewerForm.razor.cs
-// UI Card is a Bootstrap Card
-<UICard IsCollapsible="false">
-    <Header>
-        @this.PageTitle
-    </Header>
-    <Body>
-        // Error handler - only renders it's content when the record exists and is loaded
-        <UIErrorHandler IsError="@this.IsError" IsLoading="this.IsDataLoading" ErrorMessage="@this.RecordErrorMessage">
-            <UIContainer>
-                    .....
-                    // Example data value row with label and edit control
-                    <UIRow>
-                        <UILabelColumn Columns="2">
-                            Date
-                        </UILabelColumn>
-
-                        <UIColumn Columns="2">
-                            <FormControlPlainText Value="@this.Service.Record.Date.AsShortDate()"></FormControlPlainText>
-                        </UIColumn>
-
-                        <UILabelColumn Columns="2">
-                            ID
-                        </UILabelColumn>
-
-                        <UIColumn Columns="2">
-                            <FormControlPlainText Value="@this.Service.Record.ID.ToString()"></FormControlPlainText>
-                        </UIColumn>
-
-                        <UILabelColumn Columns="2">
-                            Frost
-                        </UILabelColumn>
-
-                        <UIColumn Columns="2">
-                            <FormControlPlainText Value="@this.Service.Record.Frost.AsYesNo()"></FormControlPlainText>
-                        </UIColumn>
-                    </UIRow>
-                    ..... // more form rows here
+            ..........
             </UIContainer>
         </UIErrorHandler>
-        // Container for the buttons - not record dependant so outside the error handler to allow navigation if UIErrorHandler is in error.
         <UIContainer>
             <UIRow>
                 <UIColumn Columns="6">
-
                     <UIButton Show="this.IsLoaded" ColourCode="Bootstrap.ColourCode.dark" ClickEvent="(e => this.NextRecord(-1))">
                         Previous
                     </UIButton>
@@ -590,16 +131,334 @@ The Razor Markup below is an abbreviated version of the full file.  This makes e
             </UIRow>
         </UIContainer>
     </Body>
-</UICard>
 ```
-### Base Form Code
 
-At this point we step down from project specific code, to generic library base forms.  Everything is a simplified version of the Editor Code without the *EditRecordComponentBase* events.
+The code behind page is relatively simple - the complexity is in the boilerplate code in parent classes.  It loads the record specific Controller service.
 
+```C#
+// CEC.Weather/Components/Forms/WeatherForecastViewerForm.razor.cs
+public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast>
+{
+    public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast, WeatherForecastDbContext>
+    {
+        [Inject]
+        private WeatherForecastControllerService ControllerService { get; set; }
+
+        public override string PageTitle => $"Weather Forecast Viewer {this.Service?.Record?.Date.AsShortDate() ?? string.Empty}".Trim();
+
+        protected async override Task OnInitializedAsync()
+        {
+            this.Service = this.ControllerService;
+            await base.OnInitializedAsync();
+        }
+
+        //  example code to show jumping records with querystring changes
+        protected void NextRecord(int increment) 
+        {
+            var rec = (this._ID + increment) == 0 ? 1 : this._ID + increment;
+            rec = rec > this.Service.BaseRecordCount ? this.Service.BaseRecordCount : rec;
+            this.NavManager.NavigateTo($"/WeatherForecast/View?id={rec}");
+        }
+    }
+}
+```
+
+### UI Controls
+
+The application uses UI Controls to separate HTML and CSS markup from Views and Forms.  Bootstrap is used as the UI Framework.
+
+##### UIBase
+
+All library UI Controls inherit from *UIBase*.  This implements *IComponent*, we don't use *ComponentBase* because we don't need it's complexity.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
+
+It builds an HTML DIV block that you can turn on or off.
+
+##### UIBootstrapBase
+
+*UIBootstrapBase* adds extra functionality for Bootstrap components. Formatting options such a component colour and sizing are represented as Enums, and Css fragments built based on the selected Enum.
+
+```c#
+// CEC.Blazor/Components/UIControls/UIBootstrapBase.cs
+public class UIBootstrapBase : UIBase
+{
+    protected virtual string CssName { get; set; } = string.Empty;
+
+    /// Bootstrap Colour for the Component
+    [Parameter]
+    public Bootstrap.ColourCode ColourCode { get; set; } = Bootstrap.ColourCode.info;
+
+    /// Bootstrap Size for the Component
+    [Parameter]
+    public Bootstrap.SizeCode SizeCode { get; set; } = Bootstrap.SizeCode.normal;
+
+    /// Property to set the HTML value if appropriate
+    [Parameter]
+    public string Value { get; set; } = "";
+
+    /// Property to get the Colour CSS
+    protected virtual string ColourCssFragment => GetCssFragment<Bootstrap.ColourCode>(this.ColourCode);
+
+    /// Property to get the Size CSS
+    protected virtual string SizeCssFragment => GetCssFragment<Bootstrap.SizeCode>(this.SizeCode);
+
+    /// CSS override
+    protected override string _Css => this.CleanUpCss($"{this.CssName} {this.SizeCssFragment} {this.ColourCssFragment} {this.AddOnCss}");
+
+    /// Method to format as Bootstrap CSS Fragment
+    protected string GetCssFragment<T>(T code) => $"{this.CssName}-{Enum.GetName(typeof(T), code).Replace("_", "-")}";
+}
+```
+### Some Examples
+
+##### UIButton
+
+This is a standard Bootstrap Button. 
+1. *ButtonType* and *ClickEvent* are specific to buttons.
+2. *CssName* and *_Tag* are hardwired.
+3. *ButtonClick* handles the button click event.
+4. *BuildRenderTree* builds the markup and wires the JSInterop *onclick* event.
+5. *Show* controls whether the button gets rendered.
+
+```c#
+// CEC.Blazor/Components/UIControls/UIButton.cs
+public class UIButton : UIBootstrapBase
+{
+    /// Property setting the button HTML attribute Type
+    [Parameter]
+    public string ButtonType { get; set; } = "button";
+
+    /// Override the CssName
+    protected override string CssName => "btn";
+
+    /// Override the Tag
+    protected override string _Tag => "button";
+
+    /// Callback for a button click event
+    [Parameter]
+    public EventCallback<MouseEventArgs> ClickEvent { get; set; }
+
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
+    {
+        if (this.Show)
+        {
+            builder.OpenElement(0, this._Tag);
+            builder.AddAttribute(1, "type", this.ButtonType);
+            builder.AddAttribute(2, "class", this._Css);
+            builder.AddAttribute(3, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, this.ButtonClick));
+            builder.AddContent(4, ChildContent);
+            builder.CloseElement();
+        }
+    }
+
+    /// Event handler for button click
+    protected void ButtonClick(MouseEventArgs e) => this.ClickEvent.InvokeAsync(e);
+}
+```
+
+Here's some code showing the control in use.
+
+```html
+// CEC.Weather/Components/Forms/WeatherViewer.razor
+<UIButtonColumn Columns="6">
+    <UIButton Show="!this.IsModal" ColourCode="Bootstrap.ColourCode.nav" ClickEvent="(e => this.NavigateTo(PageExitType.ExitToList))">
+        Exit To List
+    </UIButton>
+    <UIButton Show="!this.IsModal" ColourCode="Bootstrap.ColourCode.nav" ClickEvent="(e => this.NavigateTo(PageExitType.ExitToLast))">
+        Exit
+    </UIButton>
+    <UIButton Show="this.IsModal" ColourCode="Bootstrap.ColourCode.nav" ClickEvent="(e => this.ModalExit())">
+        Exit
+    </UIButton>
+</UIButtonColumn>
+```
+
+##### UIAlert
+
+This is a standard Bootstrap Alert. 
+1. *Alert* is a class to encapsulate an Alert.
+2. *ColourCssFragement*, *Show* and *_Content* are wired into the Alert object instance.
+
+```c#
+// CEC.Blazor/Components/UIControls/UI/UIAlert.cs
+public class UIAlert : UIBootstrapBase
+{
+    /// Alert to display
+    [Parameter]
+    public Alert Alert { get; set; } = new Alert();
+
+    /// Set the CssName
+    protected override string CssName => "alert";
+
+    /// Property to override the colour CSS
+    protected override string ColourCssFragment => this.Alert != null ? GetCssFragment<Bootstrap.ColourCode>(this.Alert.ColourCode) : GetCssFragment<Bootstrap.ColourCode>(this.ColourCode);
+
+    /// Boolean Show override
+    protected override bool _Show => this.Alert?.IsAlert ?? false;
+
+    /// Override the content with the alert message
+    protected override string _Content => this.Alert?.Message ?? string.Empty;
+}
+```
+
+Here's some code showing the control in use.
+
+```html
+// CEC.Weather/Components/Forms/WeatherEditor.razor
+<UIContainer>
+    <UIRow>
+        <UIColumn Columns="7">
+            <UIAlert Alert="this.AlertMessage" SizeCode="Bootstrap.SizeCode.sm"></UIAlert>
+        </UIColumn>
+        <UIButtonColumn Columns="5">
+             .........
+        </UIButtonColumn>
+    </UIRow>
+</UIContainer>
+```
+
+##### UIErrorHandler
+
+This component deals with loading operations and errors.  It's inherits directly from UIBase.  It has three states:
+1. Loading when it displays the loading message and the spinner.
+2. Error when it displays an error message.
+3. Loaded when it displays the Child Content.
+
+The state is controlled by the two boolean Parameters.  Content is only accessed and rendered when the control knows there's data to render i.e. when *IsError* and *IsLoading* are both false.  This saves implementing a lot of error checking in the child content.
+
+```c#
+// CEC.Blazor/Components/UIControls/UI/UIErrorHandler.cs
+public class UIErrorHandler : UIBase
+{
+    /// Boolean Property that determines if the child content or an error message is diplayed
+    [Parameter]
+    public bool IsError { get; set; } = false;
+
+    /// Boolean Property that determines if the child content or an loading message is diplayed
+    [Parameter]
+    public bool IsLoading { get; set; } = true;
+
+    /// CSS Override
+    protected override string _BaseCss => this.IsLoading? "text-center p-3": "label label-error m-2";
+
+    /// Customer error message to display
+    [Parameter]
+    public string ErrorMessage { get; set; } = "An error has occured loading the content";
+
+        
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
+    {
+        this.ClearDuplicateAttributes();
+        if (IsLoading)
+        {
+            builder.OpenElement(1, "div");
+            builder.AddAttribute(2, "class", this._Css);
+            builder.OpenElement(3, "button");
+            builder.AddAttribute(4, "class", "btn btn-primary");
+            builder.AddAttribute(5, "type", "button");
+            builder.AddAttribute(6, "disabled", "disabled");
+            builder.OpenElement(7, "span");
+            builder.AddAttribute(8, "class", "spinner-border spinner-border-sm pr-2");
+            builder.AddAttribute(9, "role", "status");
+            builder.AddAttribute(10, "aria-hidden", "true");
+            builder.CloseElement();
+            builder.AddContent(11, "  Loading...");
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+        else if (IsError)
+        {
+            builder.OpenElement(1, "div");
+            builder.OpenElement(2, "span");
+            builder.AddAttribute(3, "class", this._Css);
+            builder.AddContent(4, ErrorMessage);
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+        else builder.AddContent(1, ChildContent);
+    }
+}
+```
+
+Here's some code showing the control in use.
+
+```html
+// CEC.Weather/Components/Forms/WeatherViewer.razor
+<UICard>
+    <Header>
+        @this.PageTitle
+    </Header>
+    <Body>
+        <UIErrorHandler IsError="this.IsError" IsLoading="this.IsDataLoading" ErrorMessage="@this.RecordErrorMessage">
+            <UIContainer>
+            ..........
+            </UIContainer>
+        </UIErrorHandler>
+        .......
+    </Body>
+```
+
+##### UIContainer/UIRow/UIColumn
+
+Thess creates a BootStrap Container, Row and Column.  They build out DIVs with the correct Css.
+
+```c#
+// CEC.Blazor/Components/UIControls/UIBootstrapContainer/UIContainer.cs
+    public class UIContainer : UIBase
+    {
+        // Overrides the _BaseCss property to force the css_
+        protected override string _BaseCss => "container-fluid";
+    }
+```
+
+
+```c#
+// CEC.Blazor/Components/UIControls/UIBootstrapContainer/UIRow.cs
+    public class UIRow : UIBase
+    {
+        protected override string _BaseCss => "row";
+    }
+```
+
+```c#
+// CEC.Blazor/Components/UIControls/UIBootstrapContainer/UIColumn.cs
+public class UIColumn : UIBase
+{
+    [Parameter]
+    public int Columns { get; set; } = 1;
+
+    protected override string _BaseCss => $"col-{Columns}";
+}
+```
+
+```c#
+// CEC.Blazor/Components/UIControls/UIBootstrapContainer/UILabelColumn.cs
+public class UILabelColumn : UIColumn
+{
+    protected override string _BaseCss => $"col-{Columns} col-form-label";
+}
+```
+
+Here's some code showing the controls in use.
+
+```html
+// CEC.Weather/Components/Forms/WeatherViewer.razor
+<UIContainer>
+    <UIRow>
+        <UILabelColumn Columns="2">
+            Date
+        </UILabelColumn>
+        ............
+    </UIRow>
+..........
+</UIContainer>
+```
 
 ### Wrap Up
-That wraps up this article.  We've looked at the Editor code in detail to see how it works, and then taken a quick look at the Viewer code.  We'll look in more detail at the List components in a separate article.   
+This article provides an overview on building UI Controls with components, and examines some example components in more detail.  You can see all the library UIControls in the GitHub Repository - [CEC.Blazor/Components/UIControls](https://github.com/ShaunCurtis/CEC.Blazor/tree/master/CEC.Blazor/Components/UIControls)
+
 Some key points to note:
-1. The differences in code between a Blazor Server and a Blazor WASM project are very minor.
-2. Almost all the functionality needed is implemented in the library components.  Most of the application code is Razor markup for the individual record fields.
-3. Extensive use of Async functionality in the components and CRUD data access.
+1. UI Controls lets you abstract the markup from your components.
+2. UI Controls gives you project control over the HTML and Css markup.
+3. Your main View and Form components are much cleaner and easier to view.
+4. You can use as little or as much abstraction as you wish.
+

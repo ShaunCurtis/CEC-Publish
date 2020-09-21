@@ -1,9 +1,9 @@
-# Building a Database Appication in Blazor 
+# Building a Database Application in Blazor 
 ## Part 4 - UI Components
 
 ## Introduction
 
-This is the fourth in a series of articles looking at how to build and structure a real Database Application in Blazor. The articles so far are:
+This is the fourth article in the series looking at how to build and structure a real Database Application in Blazor. The articles so far are:
 
 1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
 2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
@@ -14,11 +14,11 @@ Further articles will look at
 * List Operations in the UI
 * A walk through detailing how to add more records to the application - in this case weather stations and weather station data.
 
-This article looks at the components we use in the UI and then focuses on how generic UI Components from HTML and CSS.
+This article looks at the components we use in the UI and then focuses on how to build generic UI Components from HTML and CSS.
 
 ### Sample Project and Code
 
-See the [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor) for the libraries and sample projects.
+All the sample code and libraries are on GitHub - [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor).
 
 ### Components
 
@@ -32,11 +32,11 @@ I divide components into four categories:
 
 ### Views
 
-Views are specific to the application.  Views live in the *Routes* folder.
+Views are specific to the application and live in the *Routes* folder.
 
 The Weather Forecast Viewer and List Views are shown below.
-```html
-// CEC.Blazor.Server/Routes/WeatherForecastViewer.cs
+```cs
+// CEC.Blazor.Server/Routes/WeatherForecastViewerView.cs
 @page "/WeatherForecast/View"
 
 @namespace CEC.Blazor.Server.Pages
@@ -46,8 +46,8 @@ The Weather Forecast Viewer and List Views are shown below.
 <WeatherViewer></WeatherViewer>
 ```
 The list view defines a UIOptions object that control various list control display options.
-```html
-// CEC.Blazor.Server/Routes/WeatherForecasts.cs
+```cs
+// CEC.Blazor.Server/Routes/WeatherForecastListView.cs
 @page "/WeatherForecast"
 
 @layout MainLayout
@@ -71,12 +71,12 @@ The list view defines a UIOptions object that control various list control displ
 
 ### Forms
 
-Forms are also project specific.  In the Weather Application they reside in the CEC.Weather library as they are used by both the Server and WASM projects.  
+Forms are also project specific, but are common to both WASM and Server deployments.  In the Weather Application they reside in the CEC.Weather library.  
 
 The code below shows the Weather Viewer.  It's all UI Controls, no HTML markup.  The markup lives inside the controls - we'll look at some example UI Controls later.
 
 ```html
-// CEC.Weather/Components/Forms/WeatherViewer.razor
+// CEC.Weather/Components/Forms/WeatherForecastViewerForm.razor
 <UICard>
     <Header>
         @this.PageTitle
@@ -133,10 +133,10 @@ The code below shows the Weather Viewer.  It's all UI Controls, no HTML markup. 
     </Body>
 ```
 
-The code behind page is relatively simple - the complexity is in the boilerplate code in *RecordComponentBase*.  It loads the record specific Controller service.
+The code behind page is relatively simple - the complexity is in the boilerplate code in parent classes.  It loads the record specific Controller service.
 
 ```C#
-// CEC.Weather/Components/Forms/WeatherViewer.razor.cs
+// CEC.Weather/Components/Forms/WeatherForecastViewerForm.razor.cs
 public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast>
 {
     public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast, WeatherForecastDbContext>
@@ -152,6 +152,7 @@ public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast>
             await base.OnInitializedAsync();
         }
 
+        //  example code to show jumping records with querystring changes
         protected void NextRecord(int increment) 
         {
             var rec = (this._ID + increment) == 0 ? 1 : this._ID + increment;
@@ -168,9 +169,9 @@ The application uses UI Controls to separate HTML and CSS markup from Views and 
 
 ##### UIBase
 
-All the library UI Controls inherit from *UIBase*.  This implements *IComponent*.  No *ComponentBase* because we don't need it's complexity.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
+All library UI Controls inherit from *UIBase*.  This implements *IComponent*, we don't use *ComponentBase* because we don't need it's complexity.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
 
-It builds a HTML DIV block that you can turn on or off.
+It builds an HTML DIV block that you can turn on or off.
 
 ##### UIBootstrapBase
 
@@ -453,9 +454,11 @@ Here's some code showing the controls in use.
 ```
 
 ### Wrap Up
-This article gives an overview on building UI Controls with components, and examines some example components in more detail.
+This article provides an overview on building UI Controls with components, and examines some example components in more detail.  You can see all the library UIControls in the GitHub Repository - [CEC.Blazor/Components/UIControls](https://github.com/ShaunCurtis/CEC.Blazor/tree/master/CEC.Blazor/Components/UIControls)
 
 Some key points to note:
-1. Using this methodology, you have control over the HTML and Css markup.
-2. You can use as little or as much abstraction as you wish.
+1. UI Controls lets you abstract the markup from your components.
+2. UI Controls gives you project control over the HTML and Css markup.
+3. Your main View and Form components are much cleaner and easier to view.
+4. You can use as little or as much abstraction as you wish.
 
