@@ -24,6 +24,8 @@ All the sample code and libraries are on GitHub - [CEC.Blazor GitHub Repository]
 
 For a detailed look at components read my article [A Dive into Blazor Components](https://www.codeproject.com/Articles/5277618/A-Dive-into-Blazor-Components).
 
+To summarise, everything in the Blazor, other than the start page is a component.
+
 I divide components into four categories:
 1. Views - these are routed components/views.
 2. Forms - there can be one or more forms within a View, and one or more UIControls within a form.  Edit/Display/List components are all forms.
@@ -172,6 +174,65 @@ The application uses UI Controls to separate HTML and CSS markup from Views and 
 All library UI Controls inherit from *UIBase*.  This implements *IComponent*, we don't use *ComponentBase* because we don't need it's complexity.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
 
 It builds an HTML DIV block that you can turn on or off.
+
+*IComponent* looks like this.  
+
+```cs
+public interface IComponent
+{
+    /// Called by the builder to attach it to a render tree
+    void Attach(RenderHandle renderHandle);
+    /// Called by the render tree whenever the component parameters are changed
+    Task SetParametersAsync(ParameterView parameters);
+}
+```
+*Attach* is called whenever a render tree is built by the RenderTreeBuilder and attaches the component to the render tree.  We assign *renderHandle* to a class property *_renderHhandle*.  The *RenderHandle* class gives us access to the RenderQueue on the RenderTree through *RenderHandle.Render(RenderFragment)*.  
+
+RenderFragment is a delegate which is run by the RenderQueue executer.  We build the RenderFragment property *_componentRenderFragment* in the class initialisation method.  You can see it below. It sets the *_RenderEventQueued* property to false as it's now being run, and calls *BuildRenderTree* which builds the components markup code.
+
+*StateHasChanged* is our method for triggering a UI update.  It sets *_RenderEventQueued* property to true and loads *_componentRenderFragment* into the Render Tree RenderQueue.
+
+```cs
+// Code blocks from CEC.Blazor/Components/UIControls/UIBase.cs
+
+// RenderHandle assigned in Attack
+private RenderHandle _renderHandle;
+
+//  Class initialisation - we build the RenderFragement _componentRenderFragment
+public UIBase() => _componentRenderFragment = builder =>
+{
+    this._RenderEventQueued = false;
+    BuildRenderTree(builder);
+};
+
+//  IComponent Interface Method - called by the RenderTree Builder when it attaches the component to a Render Tree
+public void Attach(RenderHandle renderHandle) => _renderHandle = renderHandle;
+
+// Method to kick off a re-render of the component
+public void StateHasChanged()
+{
+    // Check if we already have a render queued - if so then it will handle the changes
+    if (!this._RenderEventQueued)
+    {
+        // Flag so we know we have a render queued
+        this._RenderEventQueued = true;
+        // Load the Render Fragment into the Render Queue
+        _renderHandle.Render(_componentRenderFragment);
+    }
+}
+
+```
+Whenever the component's Parameters are changed in the Render Tree, *SetParametersAsync* is called.  In *UIBase* we have a simple rendered component so we update the component parameters by calling *SetParameterProperties(this)* and then re-render the component by calling *StateHasChanged*  
+
+```cs
+public virtual Task SetParametersAsync(ParameterView parameters)
+{
+    parameters.SetParameterProperties(this);
+    StateHasChanged();
+    return Task.CompletedTask;
+}
+```
+
 
 ##### UIBootstrapBase
 
