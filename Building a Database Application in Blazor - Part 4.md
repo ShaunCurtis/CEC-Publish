@@ -198,6 +198,12 @@ RenderFragment is a delegate which is run by the RenderQueue executer.  We build
 // RenderHandle assigned in Attack
 private RenderHandle _renderHandle;
 
+/// Render Fragment to render this object
+private readonly RenderFragment _componentRenderFragment;
+
+/// Boolean Flag to track if there's a pending render event queued
+private bool _RenderEventQueued;
+
 //  Class initialisation - we build the RenderFragement _componentRenderFragment
 public UIBase() => _componentRenderFragment = builder =>
 {
@@ -232,7 +238,99 @@ public virtual Task SetParametersAsync(ParameterView parameters)
     return Task.CompletedTask;
 }
 ```
+The rest of *UIBase* is shown below with detailed commenting.
 
+```cs
+/// Gets the additional attributes that have been applied to the Component in Markup.
+[Parameter(CaptureUnmatchedValues = true)] public IDictionary<string, object> AdditionalAttributes { get; set; }
+
+/// The content between the opening and closing tags
+[Parameter]
+public RenderFragment ChildContent { get; set; }
+
+/// The component Tag that can be set - default is a DIV
+[Parameter]
+public virtual string Tag { get; set; } = "div";
+
+/// the Tag actually used in BuildRenderTree.  Can be overridden in child components
+// so protected overridden string _Tag => "span"; sets the Tag as SPAN
+protected virtual string _Tag => this.Tag;
+
+/// Css for component that can be set
+[Parameter]
+public virtual string Css { get; set; } = string.Empty;
+
+/// <summary>
+/// Additional Css that is appended to the end of the base Css
+/// </summary>
+[Parameter]
+public string AddOnCss { get; set; } = string.Empty;
+
+/// Property for fixing the base Css.  Base returns the Parameter Css, but can be overridden in inherited classes
+protected virtual string _BaseCss => this.Css;
+
+/// Property for fixing the Add On Css.  Base returns the Parameter AddOnCss, but can be overridden say to String.Empty in inherited classes.  You can set this to String.Empty to stop any Css being added
+protected virtual string _AddOnCss => this.AddOnCss;
+
+/// <summary>
+/// Actual calculated Css string used in the component.  CleanUpCss gets ride of double spaces, etc.
+/// </summary>
+protected virtual string _Css => this.CleanUpCss($"{this._BaseCss} {this._AddOnCss}");
+
+/// Method to clean up the Css String
+protected string CleanUpCss(string css)
+{
+    while (css.Contains("  ")) css = css.Replace("  ", " ");
+    return css.Trim();
+}
+/// Boolean property that dictates if the componet is rendered
+[Parameter]
+public virtual bool Show { get; set; } = true;
+
+/// Actual Show used in  the RenderTreeBuilder.  Can be overridden
+protected virtual bool _Show => this.Show;
+
+/// Property to allow the component content to be overridden.  Set to a value and it will be used instead of any child content
+protected virtual string _Content => string.Empty;
+
+/// List of Attributes to trim from AdditionalAttributes - the default is "class" as this is set by the component and we want to ignore it. 
+protected List<string> UsedAttributes { get; set; } = new List<string>() { "class" };
+
+/// inherited BuildRenderTree
+protected virtual void BuildRenderTree(RenderTreeBuilder builder)
+{
+    // Checks if we need to show the component.  If not nothing is rendered
+    if (this._Show)
+    {
+        // clean out all the Duplicate Attributes
+        this.ClearDuplicateAttributes();
+        // Open the first element
+        builder.OpenElement(0, this._Tag);
+        // Add the AdditionAttributes
+        builder.AddMultipleAttributes(1, AdditionalAttributes);
+        // Add the Css
+        builder.AddAttribute(2, "class", this._Css);
+        // Check if we have overidden content, if so use it
+        if (!string.IsNullOrEmpty(this._Content)) builder.AddContent(3, (MarkupString)this._Content);
+        // Otherwise add the child content
+        else if (this.ChildContent != null) builder.AddContent(3, ChildContent);
+        // Close the element
+        builder.CloseElement();
+    }
+}
+
+/// Method to clean up the Additional Attributes
+protected void ClearDuplicateAttributes()
+{
+    if (this.AdditionalAttributes != null && this.UsedAttributes != null)
+    {
+        foreach (var item in this.UsedAttributes)
+        {
+            if (this.AdditionalAttributes.ContainsKey(item)) this.AdditionalAttributes.Remove(item);
+        }
+    }
+}
+```
 
 ##### UIBootstrapBase
 

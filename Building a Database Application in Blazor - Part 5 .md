@@ -1,4 +1,4 @@
-# Building a Database Appication in Blazor 
+# Building a Database Application in Blazor 
 ## Part 5 - View Components - CRUD List Operations in the UI
 
 ## Introduction
