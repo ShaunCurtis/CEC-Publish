@@ -12,10 +12,10 @@ This is the fifth in the series looking at how to build and structure a real Dat
 4. [UI Components - Building HTML/CSS Controls](https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U)
 5. View Components - CRUD List Operations in the UI
 
-Further articles will look at 
+Further articles: 
 * A walk through detailing how to add more records to the application - in this case weather stations and weather station data.
 
-This article looks in detail at building reusable List presentation layer components - and deploying them in both Server and WASM projects.
+This article looks in detail at building reusable List Presentation Layer components and deploying them in both Server and WASM projects.
 
 ## Sample Project and Code
 
@@ -23,25 +23,26 @@ All the sample code and libraries are on GitHub - [CEC.Blazor GitHub Repository]
 
 ## List Functionality
 
-List components are more complex than normal CRUD components.  Expected functionality in a professional level list control needs to include:
+List components present far more challenges than other CRUD components.  Functionality expected in a professional level list control includes:
 * Paging to handle large data sets
-* Column Formatting to control column width and data overflow
+* Column formatting to control column width and data overflow
 * Sorting on individual columns
 * Filtering
 
+
 ## The Base Forms
 
-All CRUD UI components inherit from *OwningComponentBase*.  
+*ListComponentBase* is the base form for all lists.  
 
-The hierarchy for *ListComponetBase* is:
+The hierarchy for *ListComponentBase* is:
 * [*ListComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ListComponentBase.cs) 
 * [*ControllerServiceComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs) 
 * [*ApplicationComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs)
 * *OwningComponentBase*.
 
-Not all the code is shown in the article.  Some class are simply too big.  All source files can be viewed on the Github site, and I include references or links to specific code files at appropriate places in the article.  Much of the information detail is in the comments in the code sections.
+Not all the code is shown in the article - some class are simply too big and I only show the most relevant sections.  All source files can be viewed on the Github site, and I include references or links to specific code files at appropriate places in the article.  Much of the detail on what sections of code do is in the code comments.
 
-[*ApplicationComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs) is the base component and contains all the common client application code for form components.  It provides:
+[*ApplicationComponentBase*](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs) contains all the common client application code for form components.  It provides:
 
   1. Injection of common services, such as Navigation Manager, AuthenicationState, RouterSessionService and Application Configuration.
   2. Authentication and user management.
@@ -60,7 +61,7 @@ Not all the code is shown in the article.  Some class are simply too big.  All s
 
 ### Paging
 
-Paging is implemented through the *IControllerPagingService*. The *BaseControllerService* implements this interface.  It's not shown in detail here because it's too big.  Much of the functionality is pretty obvious - properties to track which page your on, how many pages and blocks you have, page size, etc - so we'll skip to the more interesting code.
+Paging is implemented through the *IControllerPagingService* interface. *BaseControllerService* implements this interface.  It's not shown in detail here because it's too big.  Much of the functionality is pretty obvious - properties to track which page your on, how many pages and blocks you have, page size, etc - so we'll skip to the more interesting sections.
 
 #### Initial Form Loading
 
@@ -72,8 +73,9 @@ protected async override Task OnInitializedAsync()
 {
     // Sets the specific service
     this.Service = this.ControllerService;
-    // Sets the max column
+    // Sets the max width column
     this.UIOptions.MaxColumn = 3;
+    // base call
     await base.OnInitializedAsync();
 }
 ```
@@ -86,10 +88,12 @@ protected async override Task OnInitializedAsync()
 {
     if (this.IsService)
     {
-        // Reset the Service i.e. clear the record list, filter etc.
+        // Reset the Service i.e. clear the record list, filter, etc.
         await this.Service.Reset();
+        // Set the title if we don't have one
         this.ListTitle = string.IsNullOrEmpty(this.ListTitle) ? $"List of {this.Service.RecordConfiguration.RecordListDecription}" : this.ListTitle;
     }
+    // base call
     await base.OnInitializedAsync();
 }
 ```
@@ -99,6 +103,9 @@ protected async override Task OnInitializedAsync()
 {
     // Gets the user if Authentication is enabled
     if (this.AuthenticationState != null) await this.GetUserAsync();
+    // Check if we have a query string value in the Route for ID.  If so use it
+    if (this.NavManager.TryGetQueryString<int>("id", out int querystringid)) this.ID = querystringid > -1 ? querystringid : this._ID;
+    // base call that bottoms out here
     await base.OnInitializedAsync();
 }
 ```
@@ -106,11 +113,26 @@ protected async override Task OnInitializedAsync()
 // CEC.Blazor/Components/BaseForms/ListComponentBase.cs
 protected async override Task OnParametersSetAsync()
 {
+    // base call
     await base.OnParametersSetAsync();
-    // Load the page - as we've reset everything this will be the first page with the default filters
-    if (this.IsService) await this.Service.LoadPagingAsync();
+    // Load the page - everything is reset so this will be new with the default filter
+    if (this.IsService)
+    {
+        // Load the filters for the recordset
+        this.LoadFilter();
+        // Load the paged recordset
+        await this.Service.LoadPagingAsync();
+    }
     this.Loading = false;
 }
+
+// base LoadFilter
+protected virtual void LoadFilter()
+{
+    // Set OnlyLoadIfFilter if the Parameter value is set
+    if (IsService) this.Service.FilterList.OnlyLoadIfFilters = this.OnlyLoadIfFilter;
+}
+
 ```
 We're interested in *ListComponentBase* calling *LoadPagingAsync()*
 
@@ -310,7 +332,7 @@ public async Task PaginateAsync()
 ```
 #### PageControl
 
-The *PageControl* code is shown below and documentd with comments.
+The *PageControl* code is shown below and documented with comments.
 
 ```c#
 // CEC.Blazor/Components/FormControls/PagingControl.razor
@@ -494,8 +516,7 @@ The Razor Markup below is an abbreviated version of the full file.  This makes e
 The Razor component uses a set of UIControls designed for list building.  *UICardGrid* builds the Bootstrap Card and the table framework.  You can explore the components code in the Github Repository - [CEC.Blazor/Components/UIControls/UIGridTable](https://github.com/ShaunCurtis/CEC.Blazor/tree/master/CEC.Blazor/Components/UIControls/UIGridTable).
 
 ### Wrap Up
-That wraps up this article.  We've looked at the List Controls in detail to see how they work.   
-Some key points to note:
+That wraps up this article.  Some key points to note:
 1. The differences in code between a Blazor Server and a Blazor WASM project are very minor.
-2. Almost all the functionality is implemented in the library components.  Most application code is Razor markup for the individual record fields.
-3. Extensive use of Async functionality in the components and CRUD data access.
+2. Almost all functionality is implemented in the library components.  Most of the application code is Razor markup for the individual record fields.
+3. Async functionality is used throughout the components and CRUD data access.
