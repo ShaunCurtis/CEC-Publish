@@ -1,12 +1,22 @@
 # Building a Database Appication in Blazor 
-# Part 5 - Adding new  Record Types to Weather Projects
+# Part 6 - Adding new Record Types and Thier UI to Weather Projects
 
-This is the fifth article in the series and walks through adding new records to the Weather Application. We are going to import station data from the UK Met Office.  There's an command line importer project included in the solution to fetch and import the data.  This is monthly data from British Weather Stations going back to 1928.  We'll add two record types:
+This is the sixth article in the series and walks through adding new records to the Weather Application.  The articles so far are:
+
+
+1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
+2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
+3. [View Components - CRUD Edit and View Operations in the UI](https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C)
+4. [UI Components - Building HTML/CSS Controls](https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U)
+5. View Components - CRUD List Operations in the UI
+6. Adding vNew Record Types and the UI to Weather Projects
+
+ We'll import station data from the UK Met Office.  There's an command line importer project included in the solution to fetch and import the data.  The data is monthly records from British Weather Stations going back to 1928.  We'll add two record types:
 
 * Weather Stations
 * Weather Reports from Stations
 
-And all the infrastructure to provide UI Crud operations on these two records.
+And all the infrastructure to provide UI CRUD operations for these two records.
 
 We will build both Server and WASM deployments, so we have 4 projects where we will be adding code:
 1. **CEC.Weather** - the shared project library
@@ -943,43 +953,6 @@ protected override void LoadFilter()
 }
 ......
 ```
-
-To digress a little, the Filter magic is again in a DbContext extension.
-
-```c#
-// CEC.Blazor/Extensions/DbContextExtensions.cs
-public async static Task<List<TRecord>> GetRecordFilteredListAsync<TRecord>(this DbContext context, IFilterList filterList, string dbSetName = null) where TRecord : class, IDbRecord<TRecord>
-{
-    var firstrun = true;
-    // Get the PropertInfo object for the record DbSet
-    var propertyInfo = context.GetType().GetProperty(dbSetName ?? IDbRecord<TRecord>.RecordName);
-    // Get the actual value and cast it correctly
-    var dbset = (DbSet<TRecord>)(propertyInfo.GetValue(context));
-    // Get a empty list
-    var list = new List<TRecord>();
-    // if we have a filter go through each filter
-    // note that only the first filter runs a SQL query against the database
-    // the rest are run against the dataset.  So do the biggest slice with the first filter for maximum efficiency.
-    if (filterList != null && filterList.Filters.Count > 0)
-    {
-        foreach (var filter in filterList.Filters)
-        {
-            // Get the filter propertyinfo object
-            var x = typeof(TRecord).GetProperty(filter.Key);
-            // if we have a list already apply the filter to the list
-            if (list.Count > 0) list.Where(item => x.GetValue(item) == filter.Value).ToList();
-            // If this is the first run we query the database directly
-            else if (firstrun) list = await dbset.FromSqlRaw($"SELECT * FROM vw_{ propertyInfo.Name} WHERE {filter.Key} = {filter.Value}").ToListAsync();
-            firstrun = false;
-        }
-    }
-    //  No list, just get the full recordset
-    else list = await dbset.ToListAsync();
-    return list;
-}
-```
-
-
 ### Nav Menu
 
 Add the menu link in *NavMenu*.
@@ -1167,34 +1140,7 @@ namespace CEC.Weather.Components
     </table>
 </EditForm>
 ```
- The filter displays a set of dropdowns.  When you change a value, the value is added, updated or deleted in the filter list and the service FilterUpdated event is kicked off.  The List Form has registered with this event, resets and reloads the recordset (with the updated filter) and refresh the display.
-
-```c#
-// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
-.........
-protected override void OnAfterRender(bool firstRender)
-{
-    if (firstRender)
-    {
-        this.Paging.PageHasChanged += this.UpdateUI;
-        this.Service.ListHasChanged += this.OnRecordsUpdate;
-        // Register the FilterChanged event hsandler with the Service FilterHasChanged event
-        this.Service.FilterHasChanged += this.FilterUpdated;
-    }
-    base.OnAfterRender(firstRender);
-}
-........
-protected virtual async void FilterUpdated(object sender, EventArgs e)
-{
-    // reset the List
-    await this.Service.ResetListAsync();
-    // kick off a Paging Load
-    await this.Paging.LoadAsync();
-    // Update the UI to show the new recordset
-    await InvokeAsync(this.StateHasChanged);
-}
-.......
-```
+ The filter displays a set of dropdowns.  When you change a value, the value is added, updated or deleted in the filter list and the service FilterUpdated event is kicked off.  We'll look in more detail at how filtering works in the next article in this series in a section of the article - Component Updating with Events.
 
 ## CEC.Blazor.Server
 
