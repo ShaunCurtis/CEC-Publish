@@ -1,15 +1,30 @@
-# Buildinging a Database Appication in Blazor 
+# Building a Database Application in Blazor 
 ## Part 4 - UI Components
 
-Part 3 described the techniques and methodologies for building boilerplate CRUD UI Components in a library.  This article takes a more general look at UI components and how to structure them.
+## Introduction
+
+This is the fourth article in the series looking at how to build and structure a real Database Application in Blazor. The articles so far are:
+
+1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
+2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
+3. [View Components - CRUD Edit and View Operations in the UI](https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C)
+4. UI Components - Building HTML/CSS Controls
+
+Further articles will look at 
+* List Operations in the UI
+* A walk through detailing how to add more records to the application - in this case weather stations and weather station data.
+
+This article looks at the components we use in the UI and then focuses on how to build generic UI Components from HTML and CSS.
 
 ### Sample Project and Code
 
-See the [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor) for the libraries and sample projects.
+All the sample code and libraries are on GitHub - [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor).
 
 ### Components
 
-For a detailed look at components read my Article [A Dive into Blazor Compoents](https://www.codeproject.com/Articles/5277618/A-Dive-into-Blazor-Components).
+For a detailed look at components read my article [A Dive into Blazor Components](https://www.codeproject.com/Articles/5277618/A-Dive-into-Blazor-Components).
+
+To summarise, everything in the Blazor, other than the start page is a component.
 
 I divide components into four categories:
 1. Views - these are routed components/views.
@@ -19,11 +34,11 @@ I divide components into four categories:
 
 ### Views
 
-Views are specific to the application.  in my applications Views live in the *Routes* folder.
+Views are specific to the application and live in the *Routes* folder.
 
 The Weather Forecast Viewer and List Views are shown below.
-```html
-// CEC.Blazor.Server/Routes/WeatherForecastViewer.cs
+```cs
+// CEC.Blazor.Server/Routes/WeatherForecastViewerView.cs
 @page "/WeatherForecast/View"
 
 @namespace CEC.Blazor.Server.Pages
@@ -33,8 +48,8 @@ The Weather Forecast Viewer and List Views are shown below.
 <WeatherViewer></WeatherViewer>
 ```
 The list view defines a UIOptions object that control various list control display options.
-```html
-// CEC.Blazor.Server/Routes/WeatherForecasts.cs
+```cs
+// CEC.Blazor.Server/Routes/WeatherForecastListView.cs
 @page "/WeatherForecast"
 
 @layout MainLayout
@@ -58,12 +73,12 @@ The list view defines a UIOptions object that control various list control displ
 
 ### Forms
 
-Forms are also Project specific.  In the Weather Application they reside in the CEC.Weather library as they are used by both the Server and WASM projects.  
+Forms are also project specific, but are common to both WASM and Server deployments.  In the Weather Application they reside in the CEC.Weather library.  
 
 The code below shows the Weather Viewer.  It's all UI Controls, no HTML markup.  The markup lives inside the controls - we'll look at some example UI Controls later.
 
 ```html
-// CEC.Weather/Components/Forms/WeatherViewer.razor
+// CEC.Weather/Components/Forms/WeatherForecastViewerForm.razor
 <UICard>
     <Header>
         @this.PageTitle
@@ -120,10 +135,10 @@ The code below shows the Weather Viewer.  It's all UI Controls, no HTML markup. 
     </Body>
 ```
 
-The code behind page is relatively simple - the complexity is in the boilerplate code in *RecordComponentBase*.  It loads the record specific Controller service.
+The code behind page is relatively simple - the complexity is in the boilerplate code in parent classes.  It loads the record specific Controller service.
 
 ```C#
-// CEC.Weather/Components/Forms/WeatherViewer.razor.cs
+// CEC.Weather/Components/Forms/WeatherForecastViewerForm.razor.cs
 public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast>
 {
     public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast, WeatherForecastDbContext>
@@ -139,6 +154,7 @@ public partial class WeatherViewer : RecordComponentBase<DbWeatherForecast>
             await base.OnInitializedAsync();
         }
 
+        //  example code to show jumping records with querystring changes
         protected void NextRecord(int increment) 
         {
             var rec = (this._ID + increment) == 0 ? 1 : this._ID + increment;
@@ -155,9 +171,166 @@ The application uses UI Controls to separate HTML and CSS markup from Views and 
 
 ##### UIBase
 
-All UI Controls inherit from *UIBase*.  This implements *IComponent*.  It doesn't inherit from *ComponentBase* because we don't need the complexity it implements.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
+All library UI Controls inherit from *UIBase*.  This implements *IComponent*, we don't use *ComponentBase* because we don't need it's complexity.   The complete class is too long to show - you can view it [here](https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/UIControls/UI/UIBase.cs).
 
-It builds a HTML DIV block that you can turn on or off.
+It builds an HTML DIV block that you can turn on or off.
+
+*IComponent* looks like this.  
+
+```cs
+public interface IComponent
+{
+    /// Called by the builder to attach it to a render tree
+    void Attach(RenderHandle renderHandle);
+    /// Called by the render tree whenever the component parameters are changed
+    Task SetParametersAsync(ParameterView parameters);
+}
+```
+*Attach* is called whenever a render tree is built by the RenderTreeBuilder and attaches the component to the render tree.  We assign *renderHandle* to a class property *_renderHhandle*.  The *RenderHandle* class gives us access to the RenderQueue on the RenderTree through *RenderHandle.Render(RenderFragment)*.  
+
+RenderFragment is a delegate which is run by the RenderQueue executer.  We build the RenderFragment property *_componentRenderFragment* in the class initialisation method.  You can see it below. It sets the *_RenderEventQueued* property to false as it's now being run, and calls *BuildRenderTree* which builds the components markup code.
+
+*StateHasChanged* is our method for triggering a UI update.  It sets *_RenderEventQueued* property to true and loads *_componentRenderFragment* into the Render Tree RenderQueue.
+
+```cs
+// Code blocks from CEC.Blazor/Components/UIControls/UIBase.cs
+
+// RenderHandle assigned in Attack
+private RenderHandle _renderHandle;
+
+/// Render Fragment to render this object
+private readonly RenderFragment _componentRenderFragment;
+
+/// Boolean Flag to track if there's a pending render event queued
+private bool _RenderEventQueued;
+
+//  Class initialisation - we build the RenderFragement _componentRenderFragment
+public UIBase() => _componentRenderFragment = builder =>
+{
+    this._RenderEventQueued = false;
+    BuildRenderTree(builder);
+};
+
+//  IComponent Interface Method - called by the RenderTree Builder when it attaches the component to a Render Tree
+public void Attach(RenderHandle renderHandle) => _renderHandle = renderHandle;
+
+// Method to kick off a re-render of the component
+public void StateHasChanged()
+{
+    // Check if we already have a render queued - if so then it will handle the changes
+    if (!this._RenderEventQueued)
+    {
+        // Flag so we know we have a render queued
+        this._RenderEventQueued = true;
+        // Load the Render Fragment into the Render Queue
+        _renderHandle.Render(_componentRenderFragment);
+    }
+}
+
+```
+Whenever the component's Parameters are changed in the Render Tree, *SetParametersAsync* is called.  In *UIBase* we have a simple rendered component so we update the component parameters by calling *SetParameterProperties(this)* and then re-render the component by calling *StateHasChanged*  
+
+```cs
+public virtual Task SetParametersAsync(ParameterView parameters)
+{
+    parameters.SetParameterProperties(this);
+    StateHasChanged();
+    return Task.CompletedTask;
+}
+```
+The rest of *UIBase* is shown below with detailed commenting.
+
+```cs
+/// Gets the additional attributes that have been applied to the Component in Markup.
+[Parameter(CaptureUnmatchedValues = true)] public IDictionary<string, object> AdditionalAttributes { get; set; }
+
+/// The content between the opening and closing tags
+[Parameter]
+public RenderFragment ChildContent { get; set; }
+
+/// The component Tag that can be set - default is a DIV
+[Parameter]
+public virtual string Tag { get; set; } = "div";
+
+/// the Tag actually used in BuildRenderTree.  Can be overridden in child components
+// so protected overridden string _Tag => "span"; sets the Tag as SPAN
+protected virtual string _Tag => this.Tag;
+
+/// Css for component that can be set
+[Parameter]
+public virtual string Css { get; set; } = string.Empty;
+
+/// <summary>
+/// Additional Css that is appended to the end of the base Css
+/// </summary>
+[Parameter]
+public string AddOnCss { get; set; } = string.Empty;
+
+/// Property for fixing the base Css.  Base returns the Parameter Css, but can be overridden in inherited classes
+protected virtual string _BaseCss => this.Css;
+
+/// Property for fixing the Add On Css.  Base returns the Parameter AddOnCss, but can be overridden say to String.Empty in inherited classes.  You can set this to String.Empty to stop any Css being added
+protected virtual string _AddOnCss => this.AddOnCss;
+
+/// <summary>
+/// Actual calculated Css string used in the component.  CleanUpCss gets ride of double spaces, etc.
+/// </summary>
+protected virtual string _Css => this.CleanUpCss($"{this._BaseCss} {this._AddOnCss}");
+
+/// Method to clean up the Css String
+protected string CleanUpCss(string css)
+{
+    while (css.Contains("  ")) css = css.Replace("  ", " ");
+    return css.Trim();
+}
+/// Boolean property that dictates if the componet is rendered
+[Parameter]
+public virtual bool Show { get; set; } = true;
+
+/// Actual Show used in  the RenderTreeBuilder.  Can be overridden
+protected virtual bool _Show => this.Show;
+
+/// Property to allow the component content to be overridden.  Set to a value and it will be used instead of any child content
+protected virtual string _Content => string.Empty;
+
+/// List of Attributes to trim from AdditionalAttributes - the default is "class" as this is set by the component and we want to ignore it. 
+protected List<string> UsedAttributes { get; set; } = new List<string>() { "class" };
+
+/// inherited BuildRenderTree
+protected virtual void BuildRenderTree(RenderTreeBuilder builder)
+{
+    // Checks if we need to show the component.  If not nothing is rendered
+    if (this._Show)
+    {
+        // clean out all the Duplicate Attributes
+        this.ClearDuplicateAttributes();
+        // Open the first element
+        builder.OpenElement(0, this._Tag);
+        // Add the AdditionAttributes
+        builder.AddMultipleAttributes(1, AdditionalAttributes);
+        // Add the Css
+        builder.AddAttribute(2, "class", this._Css);
+        // Check if we have overidden content, if so use it
+        if (!string.IsNullOrEmpty(this._Content)) builder.AddContent(3, (MarkupString)this._Content);
+        // Otherwise add the child content
+        else if (this.ChildContent != null) builder.AddContent(3, ChildContent);
+        // Close the element
+        builder.CloseElement();
+    }
+}
+
+/// Method to clean up the Additional Attributes
+protected void ClearDuplicateAttributes()
+{
+    if (this.AdditionalAttributes != null && this.UsedAttributes != null)
+    {
+        foreach (var item in this.UsedAttributes)
+        {
+            if (this.AdditionalAttributes.ContainsKey(item)) this.AdditionalAttributes.Remove(item);
+        }
+    }
+}
+```
 
 ##### UIBootstrapBase
 
@@ -227,12 +400,11 @@ public class UIButton : UIBootstrapBase
     {
         if (this.Show)
         {
-            var i = -1;
-            builder.OpenElement(i++, this._Tag);
-            builder.AddAttribute(i++, "type", this.ButtonType);
-            builder.AddAttribute(i++, "class", this._Css);
-            builder.AddAttribute(i++, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, this.ButtonClick));
-            builder.AddContent(i++, ChildContent);
+            builder.OpenElement(0, this._Tag);
+            builder.AddAttribute(1, "type", this.ButtonType);
+            builder.AddAttribute(2, "class", this._Css);
+            builder.AddAttribute(3, "onclick", EventCallback.Factory.Create<MouseEventArgs>(this, this.ButtonClick));
+            builder.AddContent(4, ChildContent);
             builder.CloseElement();
         }
     }
@@ -441,9 +613,11 @@ Here's some code showing the controls in use.
 ```
 
 ### Wrap Up
-This article gives an overview on building UI Controls with components, and examines some example components in more detail.
+This article provides an overview on building UI Controls with components, and examines some example components in more detail.  You can see all the library UIControls in the GitHub Repository - [CEC.Blazor/Components/UIControls](https://github.com/ShaunCurtis/CEC.Blazor/tree/master/CEC.Blazor/Components/UIControls)
 
 Some key points to note:
-1. Using this methodology, you have control over the HTML and Css markup.
-2. You can use as little or as much abstraction as you wish.
+1. UI Controls lets you abstract the markup from your components.
+2. UI Controls gives you project control over the HTML and Css markup.
+3. Your main View and Form components are much cleaner and easier to view.
+4. You can use as little or as much abstraction as you wish.
 
