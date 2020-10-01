@@ -1,488 +1,539 @@
-<ul class="download">
-	<li><a data-option="nofetch" href="https://github.com/ShaunCurtis/CEC-Publish/archive/master.zip">Download latest Repository Archive</a></li>
-	<li><a href="https://github.com/ShaunCurtis/CEC-Publish/archive/master.zip">Download local copy</a></li>
-</ul>
-
-<h2>Part 3 - CRUD Operations in the UI</h2>
+<h1>Part 5 - View Components - CRUD List Operations in the UI</h1>
 
 <h2>Introduction</h2>
 
-<p>This is the third in a set of articles looks at how to build and structure a real Database Application in Blazor. The five articles are:</p>
+<p>This is the fifth in the series looking at how to build and structure a real Database Application in Blazor. The articles so far are:</p>
 
 <ol>
-	<li><a href="https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P">Project Structure and Framework</a></li>
-	<li><a href="https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S">Services - Building the CRUD Data Layers</a></li>
-	<li>View Components - Building the CRUD Presentation Layer</li>
-	<li>UI Components - Building HTML/CSS Controls</li>
-	<li>A walk through detailing how to add weather stations and weather station data to the application</li>
+	<li><a href="https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P" rel="nofollow">Project Structure and Framework</a></li>
+	<li><a href="https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S" rel="nofollow">Services - Building the CRUD Data Layers</a></li>
+	<li><a href="https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C" rel="nofollow">View Components - CRUD Edit and View Operations in the UI</a></li>
+	<li><a href="https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U" rel="nofollow">UI Components - Building HTML/CSS Controls</a></li>
+	<li>View Components - CRUD List Operations in the UI</li>
 </ol>
 
-<p>This article looks in detail at building reusable CRUD presentation layer components, and deploying them into both Server and WASM projects.</p>
+<p>Further articles:</p>
 
-<h3>Sample Project and Code</h3>
+<ul>
+	<li>A walk through detailing how to add more records to the application - in this case weather stations and weather station data.</li>
+</ul>
 
-<p>See the <a href="https://github.com/ShaunCurtis/CEC.Blazor">CEC.Blazor GitHub Repository</a> for the libraries and sample projects.</p>
+<p>This article looks in detail at building reusable List Presentation Layer components and deploying them in both Server and WASM projects.</p>
 
-<h3>The Base Forms</h3>
+<h2>Sample Project and Code</h2>
 
-<p>The CRUD UI components inherit from <code>OwningComponentBase</code>. We use <code>OwningComponentBase</code> in preference to <code>ComponentBase</code> because it gives control over the scope of Scoped Services. Not all code is shown - some class are too big to include in this article. All source files can be viewed on the Github site, and there are references or links to code files at appropriate places in the article.</p>
+<p>All the sample code and libraries are on GitHub - <a href="https://github.com/ShaunCurtis/CEC.Blazor">CEC.Blazor GitHub Repository</a>.</p>
 
-<h4>ApplicationComponentBase</h4>
+<h2>List Functionality</h2>
 
-<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ApplicationComponentBase.cs">CEC.Blazor/Components/Base.ApplicationComponentBase.cs</a></p>
+<p>List components present far more challenges than other CRUD components. Functionality expected in a professional level list control includes:</p>
 
-<p><code>ApplicationComponentBase</code> is the base component and contains all the common client application code. It provides:</p>
+<ul>
+	<li>Paging to handle large data sets</li>
+	<li>Column formatting to control column width and data overflow</li>
+	<li>Sorting on individual columns</li>
+	<li>Filtering</li>
+</ul>
+
+<h2>The Base Forms</h2>
+
+<p><code>ListComponentBase</code> is the base form for all lists.</p>
+
+<p>The hierarchy for <code>ListComponentBase</code> is:</p>
+
+<ul>
+	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ListComponentBase.cs"><code>ListComponentBase</code></a></li>
+	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs"><code>ControllerServiceComponentBase</code></a></li>
+	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs"><code>ApplicationComponentBase</code></a></li>
+	<li><code>OwningComponentBase</code>.</li>
+</ul>
+
+<p>Not all the code is shown in the article - some class are simply too big and I only show the most relevant sections. All source files can be viewed on the Github site, and I include references or links to specific code files at appropriate places in the article. Much of the detail on what sections of code do is in the code comments.</p>
+
+<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs"><code>ApplicationComponentBase</code></a> contains all the common client application code for form components. It provides:</p>
 
 <ol>
-	<li>Injection of common services, such as Navigation Manager and Application Configuration.</li>
+	<li>Injection of common services, such as Navigation Manager, AuthenicationState, RouterSessionService and Application Configuration.</li>
 	<li>Authentication and user management.</li>
-	<li>Navigation and Routing.</li>
+	<li>Navigation and Routing through <code>NavigateTo</code>.</li>
+	<li>Core modal dialog event handling (for when a component is wrapping in a Modal Dialog).</li>
+	<li>State Updating.</li>
 	<li>A set of Common Properties that are used by th inheriting classes.</li>
 </ol>
 
-<h4>ControllerServiceComponent and Its Children</h4>
-
-<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ControllerServiceComponentBase.cs"><code>ControllerServiceComponentBase</code></a> is the base CRUD component.</p>
-
-<p>There are three inherited classes for specific CRUD operations:</p>
+<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs"><code>ControllerServiceComponentBase</code></a> adds CRUD and List code:</p>
 
 <ol>
-	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/ListComponentBase.cs"><code>ListComponentBase</code></a> for all list pages</li>
-	<li><code>RecordComponentBase</code> for displaying individual records.</li>
-	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/Base/EditComponentBase.cs"><code>EditComponentBase</code></a> for CUD [Create/Update/Delete] operations.</li>
+	<li><code>IControllerService</code> property for the specific record controller service.</li>
+	<li>ID properties for the Record ID in CRUD.</li>
+	<li>UIOptions property for controlling display options in the UI Components.</li>
 </ol>
 
-<p>All common code resides in <code>ControllerServiceComponent</code>, specific code in the inherited class.</p>
+<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ListComponentBase.cs"><code>ListComponentBase</code></a> adds list specific code which we will look at in more detail below.</p>
 
-<p>These classes are relatively complex and long. We&#39;ll examine their functionality by looking at their deployment in the sample projects and then stepping back into the base components to see how their specific functionility is implemented.</p>
+<h3>Paging</h3>
 
-<h3>Implementing CRUD Pages</h3>
+<p>Paging is implemented through the <code>IControllerPagingService</code> interface. <code>BaseControllerService</code> implements this interface. It&#39;s not shown in detail here because it&#39;s too big. Much of the functionality is pretty obvious - properties to track which page your on, how many pages and blocks you have, page size, etc - so we&#39;ll skip to the more interesting sections.</p>
 
-<p>We&#39;ll look at edit operations in detail to see how the components are structured and edit functionality implemented.</p>
+<h4>Initial Form Loading</h4>
 
-<h4>The View</h4>
+<p>Lets start with loading a list form and look at <code>OnInitializedAsync</code> and <code>OnParametersSetAsync</code>.</p>
 
-<p>The routed view is a very simple component. The actual code is implemented in a separate form component that is also used in the modal dialog editor.</p>
-
-<pre lang="">
-// CEC.Blazor.WASM.Client/Routes/WeatherForecastEditorView.razor
-@page &quot;/WeatherForecast/New&quot;
-@page &quot;/WeatherForecast/Edit&quot;
-@inherits ApplicationComponentBase
-@namespace CEC.Blazor.WASM.Client.Routes
-
-&lt;WeatherEditorForm&gt;&lt;/WeatherEditorForm&gt;</pre>
-
-<h4>The Form</h4>
-
-<p>The code file is relatively simple, with most of the detail in the razor markup file.</p>
-
-<pre lang="">
-// CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor
-public partial class WeatherEditorForm : EditRecordComponentBase&lt;DbWeatherForecast, WeatherForecastDbContext&gt;
-{
-    [Inject]
-    public WeatherForecastControllerService ControllerService { get; set; }
-
-    private string CardCSS =&gt; this.IsModal ? &quot;m-0&quot; : &quot;&quot;;
-
-    protected async override Task OnInitializedAsync()
-    {
-        // Assign the correct controller service
-        this.Service = this.ControllerService;
-        await base.OnInitializedAsync();
-    }
-}</pre>
-
-<p>This gets and assigns the specific ControllerService through DI to the Service Property <code>IContollerService</code>.</p>
-
-<p>The Razor Markup below is an abbreviated version of the actual file. This makes extensive use of UIControls which will be covered in detail in the next article. The comments provide explanation.</p>
-
-<pre lang="">
-// CEC.Weather/Components/Forms/WeatherForecastEditorForm.razor.cs
-// UI Card is a Bootstrap Card
-&lt;UICard IsCollapsible=&quot;false&quot;&gt;
-    &lt;Header&gt;
-        @this.PageTitle
-    &lt;/Header&gt;
-    &lt;Body&gt;
-        // Cascades the Event Handler in the form for RecordChanged.  Picked up by each FormControl and fired when a value changes in the FormControl
-        &lt;CascadingValue Value=&quot;@this.RecordFieldChanged&quot; Name=&quot;OnRecordChange&quot; TValue=&quot;Action&lt;bool&gt;&quot;&gt;
-            // Error handler - only renders it&#39;s content when the record exists and is loaded
-            &lt;UIErrorHandler IsError=&quot;@this.IsError&quot; IsLoading=&quot;this.IsDataLoading&quot; ErrorMessage=&quot;@this.RecordErrorMessage&quot;&gt;
-                &lt;UIContainer&gt;
-                    // Standard Blazor EditForm control
-                    &lt;EditForm EditContext=&quot;this.EditContext&quot;&gt;
-                        // Fluent ValidationValidator for the form
-                        &lt;FluentValidationValidator DisableAssemblyScanning=&quot;@true&quot; /&gt;
-                        .....
-                        // Example data value row with label and edit control
-                        &lt;UIFormRow&gt;
-                            &lt;UILabelColumn Columns=&quot;4&quot;&gt;
-                                Record Date:
-                            &lt;/UILabelColumn&gt;
-                            &lt;UIColumn Columns=&quot;4&quot;&gt;
-                                // Note the Record Value bind to the record shadow copy to detect changes from the orginal stored value
-                                &lt;FormControlDate class=&quot;form-control&quot; @bind-Value=&quot;this.Service.Record.Date&quot; RecordValue=&quot;this.Service.ShadowRecord.Date&quot;&gt;&lt;/FormControlDate&gt;
-                            &lt;/UIColumn&gt;
-                        &lt;/UIFormRow&gt;
-                        ..... // more form rows here
-                    &lt;/EditForm&gt;
-                &lt;/UIContainer&gt;
-            &lt;/UIErrorHandler&gt;
-            // Container for the buttons - not record dependant so outside the error handler to allow navigation if UIErrorHandler is in error.
-            &lt;UIContainer&gt;
-                &lt;UIRow&gt;
-                    &lt;UIColumn Columns=&quot;7&quot;&gt;
-                        // Bootstrap alert to display any messages
-                        &lt;UIAlert Alert=&quot;this.AlertMessage&quot; SizeCode=&quot;Bootstrap.SizeCode.sm&quot;&gt;&lt;/UIAlert&gt;
-                    &lt;/UIColumn&gt;
-                    &lt;UIButtonColumn Columns=&quot;5&quot;&gt;
-                        ....
-                        // UIButton is a Bootstrap button.  Show controls whether it&#39;s displayed.
-                        // For example Save is displayed when the Service Record is Dirty and the record has loaded. 
-                        &lt;UIButton Show=&quot;(!this.IsClean) &amp;&amp; this.IsLoaded&quot; ClickEvent=&quot;this.Save&quot; ColourCode=&quot;Bootstrap.ColourCode.save&quot;&gt;Save&lt;/UIButton&gt;
-                        &lt;UIButton Show=&quot;this.ShowExitConfirmation &amp;&amp; this.IsLoaded&quot; ClickEvent=&quot;this.ConfirmExit&quot; ColourCode=&quot;Bootstrap.ColourCode.danger_exit&quot;&gt;Exit Without Saving&lt;/UIButton&gt;
-                        &lt;UIButton Show=&quot;(!this.NavigationCancelled) &amp;&amp; !this.ShowExitConfirmation&quot; ClickEvent=&quot;(e =&gt; this.NavigateTo(PageExitType.ExitToList))&quot; ColourCode=&quot;Bootstrap.ColourCode.nav&quot;&gt;Exit To List&lt;/UIButton&gt;
-                        &lt;UIButton Show=&quot;(!this.NavigationCancelled) &amp;&amp; !this.ShowExitConfirmation&quot; ClickEvent=&quot;this.Exit&quot; ColourCode=&quot;Bootstrap.ColourCode.nav&quot;&gt;Exit&lt;/UIButton&gt;
-                    &lt;/UIButtonColumn&gt;
-                &lt;/UIRow&gt;
-            &lt;/UIContainer&gt;
-        &lt;/CascadingValue&gt;
-    &lt;/Body&gt;
-&lt;/UICard&gt;</pre>
-
-<h4>Base Form Code</h4>
-
-<p>At this point we step down into code in the base forms. Each function/code block is annotated with the name of the source component. We look at code blocks in the class inheritance hierarchy in the order in which is is executed.</p>
-
-<h5>OnInitializedAsync</h5>
-
-<p>The code block below shows the two OnInitializedAsync methods.</p>
-
-<p><code>OnInitializedAsync</code> is implemented from top down (local code is run before calling the base method).</p>
-
-<pre lang="">
-// CEC.Weather/Components/Forms/WeatherEditorForm.razor.cs
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherForecastListForm.razor.cs
 protected async override Task OnInitializedAsync()
 {
-    // Assign the correct controller service
+    // Sets the specific service
     this.Service = this.ControllerService;
-    // Set the delay on the record load as this is a demo project
-    this.DemoLoadDelay = 250;
-    await base.OnInitializedAsync();
-}
-
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-protected async override Task OnInitializedAsync()
-{
-    // Resets the record to blank 
-    await this.Service.ResetRecordAsync();
-    await base.OnInitializedAsync();
-}
-
-// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-protected async override Task OnInitializedAsync()
-{
-    // Gets the user if we have an AuthenticationState
-    if (this.AuthenticationState != null) await this.GetUserAsync();
+    // Sets the max width column
+    this.UIOptions.MaxColumn = 3;
+    // base call
     await base.OnInitializedAsync();
 }</pre>
 
-<h5>OnParametersSetAsync</h5>
+<pre lang="c#">
+// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
 
-<p><code>OnParametersSetAsync</code> is implemented from bottom up (base method is called before any local code).</p>
-
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-protected async override Task OnParametersSetAsync()
-{
-    await base.OnParametersSetAsync();
-    // Get the record if required - see below for method detail
-    await this.LoadRecordAsync();
-}</pre>
-
-<h5>LoadRecordAsync</h5>
-
-<p>The record loading code is broken out as it&#39;s used outside the component lifecycle methods. It&#39;s implemented from bottom up (base method is called before any local code).</p>
-
-<p>The primary record load functionaility is in <code>RecordComponentBase</code> which gets and loads the record based on ID. <code>EditComponentBase</code> adds the extra functionality for editing rather than just viewing the record.</p>
-
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-protected virtual async Task LoadRecordAsync()
+/// Should be overridden in inherited components
+/// and called after setting the Service
+protected async override Task OnInitializedAsync()
 {
     if (this.IsService)
     {
-        // Set the Loading flag and call StateNasChanged to force UI changes 
-        // in this case making the UIErrorHandler show the loading spinner 
-        this.IsDataLoading = true;
-        StateHasChanged();
-
-        // Check if we have a query string value in the Route for ID.  If so use it
-        if (this.NavManager.TryGetQueryString&lt;int&gt;(&quot;id&quot;, out int querystringid)) this.ID = querystringid &gt; -1 ? querystringid : this._ID;
-
-        // Check if the component is a modal.  If so get the supplied ID
-        else if (this.IsModal &amp;&amp; this.Parent.Options.Parameters.TryGetValue(&quot;ID&quot;, out object modalid)) this.ID = (int)modalid &gt; -1 ? (int)modalid : this.ID;
-
-        // make this look slow to demo the spinner
-        if (this.DemoLoadDelay &gt; 0) await Task.Delay(this.DemoLoadDelay);
-
-        // Get the current record - this will check if the id is different from the current record and only update if it&#39;s changed
-        await this.Service.GetRecordAsync(this._ID, false);
-
-        // Set the error message - it will only be displayed if we have an error
-        this.RecordErrorMessage = $&quot;The Application can&#39;t load the Record with ID: {this._ID}&quot;;
-
-        // Set the Loading flag and call statehaschanged to force UI changes 
-        // in this case making the UIErrorHandler show the record or the error message 
-        this.IsDataLoading = false;
-        StateHasChanged();
+        // Reset the Service i.e. clear the record list, filter, etc.
+        await this.Service.Reset();
+        // Set the title if we don&#39;t have one
+        this.ListTitle = string.IsNullOrEmpty(this.ListTitle) ? $&quot;List of {this.Service.RecordConfiguration.RecordListDecription}&quot; : this.ListTitle;
     }
+    // base call
+    await base.OnInitializedAsync();
+}</pre>
+
+<pre lang="c#">
+// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
+protected async override Task OnInitializedAsync()
+{
+    // Gets the user if Authentication is enabled
+    if (this.AuthenticationState != null) await this.GetUserAsync();
+    // Check if we have a query string value in the Route for ID.  If so use it
+    if (this.NavManager.TryGetQueryString&lt;int&gt;(&quot;id&quot;, out int querystringid)) this.ID = querystringid &gt; -1 ? querystringid : this._ID;
+    // base call that bottoms out here
+    await base.OnInitializedAsync();
+}</pre>
+
+<pre lang="c#">
+// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
+protected async override Task OnParametersSetAsync()
+{
+    // base call
+    await base.OnParametersSetAsync();
+    // Load the page - everything is reset so this will be new with the default filter
+    if (this.IsService)
+    {
+        // Load the filters for the recordset
+        this.LoadFilter();
+        // Load the paged recordset
+        await this.Service.LoadPagingAsync();
+    }
+    this.Loading = false;
 }
 
-// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
-protected async override Task LoadRecordAsync()
+// base LoadFilter
+protected virtual void LoadFilter()
 {
-    await base.LoadRecordAsync();
-
-    //set up the Edit Context
-    this.EditContext = new EditContext(this.Service.Record);
-
-    // Get the actual page Url from the Navigation Manager
-    this.RouteUrl = this.NavManager.Uri;
-    // Set up this page as the active page in the router service
-    this.RouterSessionService.ActiveComponent = this;
-    // Wire up the router NavigationCancelled event
-    this.RouterSessionService.NavigationCancelled += this.OnNavigationCancelled;
+    // Set OnlyLoadIfFilter if the Parameter value is set
+    if (IsService) this.Service.FilterList.OnlyLoadIfFilters = this.OnlyLoadIfFilter;
 }</pre>
 
-<h5>OnAfterRenderAsync</h5>
+<p>We&#39;re interested in <code>ListComponentBase</code> calling <code>LoadPagingAsync()</code></p>
 
-<p><code>OnAfterRenderAsync</code> is implemented from bottom up (base is called before any local code is executed).</p>
+<pre lang="c#">
+// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
 
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-protected async override Task OnAfterRenderAsync(bool firstRender)
+/// Method to load up the Paged Data to display
+/// loads the delegate with the default service GetDataPage method and loads the first page
+/// Can be overridden for more complex situations
+public async virtual Task LoadPagingAsync(bool withDelegate = true)
 {
-    await base.OnAfterRenderAsync(firstRender);
-    // Wire up the SameComponentNavigation Event - i.e. we potentially have a new record to load in the same View 
-    if (firstRender) this.RouterSessionService.SameComponentNavigation += this.OnSameRouteRouting;
+    // set the record to null to force a reload of the records
+    this.Records = null;
+    // if requested adds a default service function to the delegate
+    if (withDelegate) this.PageLoaderAsync = new IControllerPagingService&lt;TRecord&gt;.PageLoaderDelegateAsync(this.GetDataPageWithSortingAsync);
+    // loads the paging object
+    await this.LoadAsync();
+    // Trigger event so any listeners get notified
+    this.TriggerListChangedEvent(this);
 }</pre>
 
-<h5>Event Handlers</h5>
+<p><code>IControllerPagingService</code> defines a delegate <code>PageLoaderDelegateAsync</code> which returns a List of TRecords, and a delegate property <code>PageLoaderAsync</code>.</p>
 
-<p>There are three event handlers wired up in the Component load events.</p>
+<pre lang="c#">
+// CEC.Blazor/Services/Interfaces/IControllerPagingService.cs
 
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
-// Event handler for a navigation cancelled event raised by the router
-protected virtual void OnNavigationCancelled(object sender, EventArgs e)
+// Delegate that returns a generic Record List
+public delegate Task&lt;List&lt;TRecord&gt;&gt; PageLoaderDelegateAsync();
+
+// Holds the reference to the PageLoader Method to use
+public PageLoaderDelegateAsync PageLoaderAsync { get; set; }</pre>
+
+<p>By default, <code>LoadPagingAsync</code> loads the method <code>GetDataPageWithSortingAsync</code> as <code>PageLoaderAsync</code>, and then calls <code>LoadAsync</code>.</p>
+
+<p><code>LoadAsync</code> resets various properties (We did this in <code>OnInitializedAsync</code> by resetting the service, but <code>LoadAsync</code> is called from elsewhere where we need to reset the record list - but not the whole service), and calls the <code>PageLoaderAsync</code> delegate.</p>
+
+<pre lang="c#">
+// CEC.Blazor/Services/BaseControllerService.cs
+public async Task&lt;bool&gt; LoadAsync()
 {
-    // Set the boolean properties
-    this.NavigationCancelled = true;
-    this.ShowExitConfirmation = true;
-    // Set up the alert
-    this.AlertMessage.SetAlert(&quot;&lt;b&gt;THIS RECORD ISN&#39;T SAVED&lt;/b&gt;. Either &lt;i&gt;Save&lt;/i&gt; or &lt;i&gt;Exit Without Saving&lt;/i&gt;.&quot;, Bootstrap.ColourCode.danger);
-    // Trigger a component State update - buttons and alert need to be sorted
-    InvokeAsync(this.StateHasChanged);
+    // Reset the page to 1
+    this.CurrentPage = 1;
+    // Check if we have a sort column, if not set to the default column
+    if (!string.IsNullOrEmpty(this.DefaultSortColumn)) this.SortColumn = this.DefaultSortColumn;
+    // Set the sort direction to the default
+    this.SortingDirection = DefaultSortingDirection;
+    // Check if we have a method loaded in the PageLoaderAsync delegate and if so run it
+    if (this.PageLoaderAsync != null) this.PagedRecords = await this.PageLoaderAsync();
+    // Set the block back to the start
+    this.ChangeBlock(0);
+    //  Force a UI update as everything has changed
+    this.PageHasChanged?.Invoke(this, this.CurrentPage);
+    return true;
 }</pre>
 
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/EditComponentBase.cs
-// Event handler for the Record Form Controls FieldChanged Event
-// wired to each control through a cascaded parameter
-protected virtual void RecordFieldChanged(bool isdirty)
+<p><code>GetDataPageWithSortingAsync</code> is shown below. See the comments for detail. <code>GetFilteredListAsync</code> is always called to refresh the list recordset if necessary.</p>
+
+<pre lang="c#">
+// CEC.Blazor/Services/BaseControllerService.cs
+public async virtual Task&lt;List&lt;TRecord&gt;&gt; GetDataPageWithSortingAsync()
 {
-    if (this.EditContext != null)
+    // Get the filtered list - will only get a new list if the Records property has been set to null elsewhere
+    await this.GetFilteredListAsync();
+    // Reset the start record if we are outside the range of the record set - a belt and braces check as this shouldn&#39;t happen!
+    if (this.PageStartRecord &gt; this.Records.Count) this.CurrentPage = 1;
+    // Check if we have to apply sorting, in not get the page we want
+    if (string.IsNullOrEmpty(this.SortColumn)) return this.Records.Skip(this.PageStartRecord).Take(this._PageSize).ToList();
+    else
     {
-        // Sort the Service Edit State
-        this.Service.SetClean(!isdirty);
-        // Set the boolean properties
-        this.ShowExitConfirmation = false;
-        this.NavigationCancelled = false;
-        // Sort the component state based on the edit state
-        if (this.IsClean)
+        //  If we do order the record set and then get the page we want
+        if (this.SortingDirection == SortDirection.Ascending)
         {
-            this.AlertMessage.ClearAlert();
-            this.RouterSessionService.SetPageExitCheck(false);
+            return this.Records.OrderBy(x =&gt; x.GetType().GetProperty(this.SortColumn).GetValue(x, null)).Skip(this.PageStartRecord).Take(this._PageSize).ToList();
         }
         else
         {
-            this.AlertMessage.SetAlert(&quot;The Record isn&#39;t Saved&quot;, Bootstrap.ColourCode.warning);
-            this.RouterSessionService.SetPageExitCheck(true);
+            return this.Records.OrderByDescending(x =&gt; x.GetType().GetProperty(this.SortColumn).GetValue(x, null)).Skip(this.PageStartRecord).Take(this._PageSize).ToList();
         }
-        // Trigger a component State update - buttons and alert need to be sorted
-        InvokeAsync(this.StateHasChanged);
     }
 }</pre>
 
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
-// Event handler for SameRoute event raised by the router.  The ID Querystring may have changed and we need to load a new record
-protected async void OnSameRouteRouting(object sender, EventArgs e)
+<p><code>GetFilteredListAsync</code> gets a filter list recordset. It&#39;s overridden in form components where filtering is applied - such as from a filter control. The default implementation gets the full recordset. It uses <code>IsRecords</code> to check if it needs to reload the recordset. It only reloads if <code>Records</code> is null.</p>
+
+<pre lang="c#">
+// CEC.Blazor/Services/BaseControllerService.cs
+public async virtual Task&lt;bool&gt; GetFilteredListAsync()
 {
-    // Gets the record - checks for a new ID in the querystring and if we have one loads the new record
-    await LoadRecordAsync();
+    // Check if the record set is null. and only refresh the record set if it&#39;s null
+    if (!this.IsRecords)
+    {
+        //gets the filtered record list
+        this.Records = await this.Service.GetFilteredRecordListAsync(FilterList);
+        return true;
+    }
+    return false;
 }</pre>
 
-<h5>Action Button Events</h5>
+<p>To summarise:</p>
 
-<p>There are four action events.</p>
+<ol>
+	<li>On Form loading <code>Service</code> (the specific data service for the record type) gets reset.</li>
+	<li><code>GetDataPageWithSortingAsync()</code> on the <code>Service</code> gets loaded into the <code>Service</code> delegate</li>
+	<li>The Delegate gets called with <code>Records</code> in the <code>Service</code> set to null</li>
+	<li><code>GetFilteredListAsync()</code> loads <code>Records</code></li>
+	<li><code>GetDataPageWithSortingAsync()</code> loads the first page</li>
+	<li><code>IsLoading</code> is set to false so the <code>UIErrorHandler</code> UI control displays the page.</li>
+	<li>The Form is refreshed after <code>OnParametersSetAsync</code> automatically so no manual call to <code>StateHasChanged</code> is required. <code>OnInitializedAsync</code> is part of <code>OnParametersSetAsync</code> and only completes when <code>OnInitializedAsync</code> completes.</li>
+</ol>
 
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Save Method called from the Button
-protected virtual async Task&lt;bool&gt; Save()
+<h4>Form Events</h4>
+
+<p>The <code>PagingControl</code> interfaces directly with the Form <code>Service</code> through the <code>IPagingControlService</code> interface, and links button clicks to <code>IPagingControlService</code> methods:</p>
+
+<ol>
+	<li><code>ChangeBlockAsync(int direction,bool supresspageupdate)</code></li>
+	<li><code>MoveOnePageAsync(int direction)</code></li>
+	<li><code>GoToPageAsync(int pageno)</code></li>
+</ol>
+
+<pre lang="c#">
+// CEC.Blazor/Services/BaseControllerService.cs
+
+/// Moves forward or backwards one block
+/// direction 1 for forwards
+/// direction -1 for backwards
+/// suppresspageupdate 
+///  - set to true (default) when user changes page and the block changes with the page
+///  - set to false when user changes block rather than changing page and the page needs to be updated to the first page of the block
+public async Task ChangeBlockAsync(int direction, bool suppresspageupdate = true)
 {
-    var ok = false;
-    // Validate the EditContext
-    if (this.EditContext.Validate())
+    if (direction == 1 &amp;&amp; this.EndPage &lt; this.TotalPages)
     {
-        // Save the Record
-        ok = await this.Service.SaveRecordAsync();
-        if (ok)
+        this.StartPage = this.EndPage + 1;
+        if (this.EndPage + this.PagingBlockSize &lt; this.TotalPages) this.EndPage = this.StartPage + this.PagingBlockSize - 1;
+        else this.EndPage = this.TotalPages;
+        if (!suppresspageupdate) this.CurrentPage = this.StartPage;
+    }
+    else if (direction == -1 &amp;&amp; this.StartPage &gt; 1)
+    {
+        this.EndPage = this.StartPage - 1;
+        this.StartPage = this.StartPage - this.PagingBlockSize;
+        if (!suppresspageupdate) this.CurrentPage = this.StartPage;
+    }
+    else if (direction == 0 &amp;&amp; this.CurrentPage == 1)
+    {
+        this.StartPage = 1;
+        if (this.EndPage + this.PagingBlockSize &lt; this.TotalPages) this.EndPage = this.StartPage + this.PagingBlockSize - 1;
+        else this.EndPage = this.TotalPages;
+    }
+    if (!suppresspageupdate) await this.PaginateAsync();
+}</pre>
+
+<pre lang="c#">
+/// Moves forward or backwards one page
+/// direction 1 for forwards
+/// direction -1 for backwards
+public async Task MoveOnePageAsync(int direction)
+{
+    if (direction == 1)
+    {
+        if (this.CurrentPage &lt; this.TotalPages)
         {
-            // Reset the EditContext State to clean
-            this.EditContext.MarkAsUnmodified();
-            // Set the boolean properties
-            this.ShowExitConfirmation = false;
-            // Sort the Router session state to clean
-            this.RouterSessionService.NavigationCancelledUrl = string.Empty;
+            if (this.CurrentPage == this.EndPage) await ChangeBlockAsync(1);
+            this.CurrentPage += 1;
         }
-        // Set the alert message to the return result
-        this.AlertMessage.SetAlert(this.Service.TaskResult);
-        // Trigger a component State update - buttons and alert need to be sorted
-        this.UpdateState();
     }
-    else this.AlertMessage.SetAlert(&quot;A validation error occurred.  Check individual fields for the relevant error.&quot;, Bootstrap.ColourCode.danger);
-    return ok;
-}</pre>
-
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Save and Exit Method called from the Button
-protected virtual async void SaveAndExit()
-{
-    if (await this.Save()) this.ConfirmExit();
-}</pre>
-
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Exit Method called from the Button
-protected virtual void Exit()
-{
-    // Check if we are free to exit (we have a clean record) or need confirmation
-    if (this.IsClean) ConfirmExit();
-    else this.ShowExitConfirmation = true;
-}</pre>
-
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-/// Confirm Exit Method called from the Button - bail out regardless
-protected virtual void ConfirmExit()
-{
-    // Override the sate to clean - the router only lets us escape if the state is clean.
-    this.Service.SetClean();
-    // Sort the Router session state
-    this.RouterSessionService.NavigationCancelledUrl = string.Empty;
-    //turn off page exit checking
-    this.RouterSessionService.SetPageExitCheck(false);
-    // Sort the exit strategy - where does the user want to exit to.
-    if (this.IsModal) ModalExit();
-    else
+    else if (direction == -1)
     {
-        // Check if we have a Url the user tried to navigate to - default exit to the root
-        if (!string.IsNullOrEmpty(this.RouterSessionService.NavigationCancelledUrl)) this.NavManager.NavigateTo(this.RouterSessionService.NavigationCancelledUrl);
-        else if (!string.IsNullOrEmpty(this.RouterSessionService.ReturnRouteUrl)) this.NavManager.NavigateTo(this.RouterSessionService.ReturnRouteUrl);
-        else this.NavManager.NavigateTo(&quot;/&quot;);
+        if (this.CurrentPage &gt; 1)
+        {
+            if (this.CurrentPage == this.StartPage) await ChangeBlockAsync(-1);
+            this.CurrentPage -= 1;
+        }
     }
+    await this.PaginateAsync();
 }</pre>
 
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/EditRecordComponentBase.cs
-// Cancel Method called from the Button
-protected void Cancel()
+<pre lang="c#">
+/// Moves to the specified page
+public Async Task GoToPageAsync(int pageno)
 {
-    // Set the boolean properties
-    this.ShowExitConfirmation = false;
-    this.NavigationCancelled = false;
-    // Sort the Router session state
-    this.RouterSessionService.NavigationCancelledUrl = string.Empty;
-    // Sort the component state based on the edit state
-    if (this.IsClean) this.AlertMessage.ClearAlert();
-    else this.AlertMessage.SetAlert($&quot;{this.Service.RecordConfiguration.RecordDescription} Changed&quot;, Bootstrap.ColourCode.warning);
-    // Trigger a component State update - buttons and alert need to be sorted
-    this.UpdateState();
+    this.CurrentPage = pageno;
+    await this.PaginateAsync();
 }</pre>
 
-<h5>Navigation Buttons</h5>
+<p>All the above methods set up the <code>IPagingControlService</code> properties and then call <code>PaginateAsync()</code> which calls the PageLoaderAsync delegate and forces a UI update.</p>
 
-<p><code>NavigateTo</code> provides a structured approach to navigation between, and exiting from, forms. Exit buttons are wired directly to <code>NavigateTo</code> and buttons such as SaveAndExit call it.</p>
+<pre lang="c#">
+// CEC.Blazor/Services/BaseControllerService.cs
 
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs
-protected virtual void NavigateTo(PageExitType exittype)
+/// Method to trigger the page Changed Event
+public async Task PaginateAsync()
 {
-    this.NavigateTo(new EditorEventArgs(exittype));
-}
+    // Check if we have a method loaded in the PageLoaderAsync delegate and if so run it
+    if (this.PageLoaderAsync != null) this.PagedRecords = await this.PageLoaderAsync();
+    //  Force a UI update as something has changed
+    this.PageHasChanged?.Invoke(this, this.CurrentPage);
+}</pre>
 
-protected override void NavigateTo(EditorEventArgs e)
+<h4>PageControl</h4>
+
+<p>The <code>PageControl</code> code is shown below and documented with comments.</p>
+
+<pre lang="c#">
+// CEC.Blazor/Components/FormControls/PagingControl.razor
+
+@if (this.IsPagination)
 {
-    if (IsService)
+    &lt;div class=&quot;pagination ml-2 flex-nowrap&quot;&gt;
+        &lt;nav aria-label=&quot;Page navigation&quot;&gt;
+            &lt;ul class=&quot;pagination mb-1&quot;&gt;
+                @if (this.DisplayType != PagingDisplayType.Narrow)
+                {
+                    @if (this.DisplayType == PagingDisplayType.FullwithoutPageSize)
+                    {
+                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(-1, false))&quot;&gt;1&amp;laquo;&lt;/button&gt;&lt;/li&gt;
+                    }
+                    else
+                    {
+                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(-1, false))&quot;&gt;&amp;laquo;&lt;/button&gt;&lt;/li&gt;
+                    }
+                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(-1))&quot;&gt;Previous&lt;/button&gt;&lt;/li&gt;
+                    @for (int i = this.Paging.StartPage; i &lt;= this.Paging.EndPage; i++)
+                    {
+                        var currentpage = i;
+                        &lt;li class=&quot;page-item @(currentpage == this.Paging.CurrentPage ? &quot;active&quot; : &quot;&quot;)&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.GoToPageAsync(currentpage))&quot;&gt;@currentpage&lt;/button&gt;&lt;/li&gt;
+                    }
+                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(1))&quot;&gt;Next&lt;/button&gt;&lt;/li&gt;
+                    @if (this.DisplayType == PagingDisplayType.FullwithoutPageSize)
+                    {
+                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(1, false))&quot;&gt;&amp;raquo;@this.Paging.TotalPages&lt;/button&gt;&lt;/li&gt;
+                    }
+                    else
+                    {
+                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(1, false))&quot;&gt;&amp;raquo;&lt;/button&gt;&lt;/li&gt;
+                    }
+                }
+                else
+                {
+                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(-1))&quot;&gt;1&amp;laquo;&lt;/button&gt;&lt;/li&gt;
+                    @for (int i = this.Paging.StartPage; i &lt;= this.Paging.EndPage; i++)
+                    {
+                        var currentpage = i;
+                        &lt;li class=&quot;page-item @(currentpage == this.Paging.CurrentPage ? &quot;active&quot; : &quot;&quot;)&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.GoToPageAsync(currentpage))&quot;&gt;@currentpage&lt;/button&gt;&lt;/li&gt;
+                    }
+                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(1))&quot;&gt;&amp;raquo;@this.Paging.TotalPages&lt;/button&gt;&lt;/li&gt;
+                }
+            &lt;/ul&gt;
+        &lt;/nav&gt;
+        @if (this.DisplayType == PagingDisplayType.Full)
+        {
+            &lt;span class=&quot;pagebutton btn btn-link btn-sm disabled mr-1&quot;&gt;Page @this.Paging.CurrentPage of @this.Paging.TotalPages&lt;/span&gt;
+        }
+    &lt;/div&gt;
+}</pre>
+
+<pre lang="c#">
+// CEC.Blazor/Components/FormControls/PagingControl.razor.cs
+
+public partial class PagingControl&lt;TRecord&gt; : ComponentBase where TRecord : IDbRecord&lt;TRecord&gt;, new()
+{
+    [CascadingParameter]
+    public IControllerPagingService&lt;TRecord&gt; _Paging { get; set; }
+
+    [Parameter]
+    public IControllerPagingService&lt;TRecord&gt; Paging { get; set; }
+
+    [Parameter]
+    public PagingDisplayType DisplayType { get; set; } = PagingDisplayType.Full;
+
+    [Parameter]
+    public int BlockSize { get; set; } = 0;
+
+    private bool IsPaging =&gt; this.Paging != null;
+
+    private bool IsPagination =&gt; this.Paging != null &amp;&amp; this.Paging.IsPagination;
+
+    protected override void OnInitialized()
     {
-        //check if record name is populated and if not populate it
-        if (string.IsNullOrEmpty(e.RecordName)) e.RecordName = this.Service.RecordConfiguration.RecordName;
-
-        // check if the id is set for view or edit.  If not, sets it.
-        if ((e.ExitType == PageExitType.ExitToEditor || e.ExitType == PageExitType.ExitToView) &amp;&amp; e.ID == 0) e.ID = this._ID;
-        base.NavigateTo(e);
+        // Check if we have a cascaded IControllerPagingService if so use it
+        this.Paging = this._Paging?? this.Paging;
+        base.OnInitialized();
     }
-}</pre>
-
-<p>These propagate down to <code>NavigateTo</code> in <code>ApplicationComponentBase</code></p>
-
-<pre lang="">
-// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-protected virtual void NavigateTo(EditorEventArgs e)
-{
-    switch (e.ExitType)
+    protected override Task OnParametersSetAsync()
     {
-        case PageExitType.ExitToList:
-            this.NavManager.NavigateTo($&quot;/{e.RecordName}/&quot;);
-            break;
-        case PageExitType.ExitToView:
-            this.NavManager.NavigateTo($&quot;/{e.RecordName}/View?id={e.ID}&quot;);
-            break;
-        case PageExitType.ExitToEditor:
-            this.NavManager.NavigateTo($&quot;/{e.RecordName}/Edit?id={e.ID}&quot;);
-            break;
-        case PageExitType.SwitchToEditor:
-            this.NavManager.NavigateTo($&quot;/{e.RecordName}/Edit?id={e.ID}&quot;);
-            break;
-        case PageExitType.ExitToNew:
-            this.NavManager.NavigateTo($&quot;/{e.RecordName}/New?qid={e.ID}&quot;);
-            break;
-        case PageExitType.ExitToLast:
-            if (!string.IsNullOrEmpty(this.RouterSessionService.ReturnRouteUrl)) this.NavManager.NavigateTo(this.RouterSessionService.ReturnRouteUrl);
-            this.NavManager.NavigateTo(&quot;/&quot;);
-            break;
-        case PageExitType.ExitToRoot:
-            this.NavManager.NavigateTo(&quot;/&quot;);
-            break;
-        default:
-            break;
+        if (this.IsPaging)
+        {
+            this.Paging.PageHasChanged += this.UpdateUI;
+            if (this.DisplayType == PagingDisplayType.Narrow) Paging.PagingBlockSize = 4;
+            if (BlockSize &gt; 0) Paging.PagingBlockSize = this.BlockSize;
+        }
+        return base.OnParametersSetAsync();
     }
+
+    protected void UpdateUI(object sender, int recordno) =&gt; InvokeAsync(StateHasChanged);
+
+    private string IsCurrent(int i) =&gt; i == this.Paging.CurrentPage ? &quot;active&quot; : string.Empty;
 }</pre>
+
+<pre lang="c#">
+
+&nbsp;</pre>
+
+<h4>WeatherForecastListForm</h4>
+
+<p>The Code for the <code>WeatherForecastListForm</code> is fairly self explanatory. <code>OnView</code> and <code>OnEdit</code> either route to the Viewer or Editor, or open the dialogs if <code>UIOptions</code> specifies Use Modals.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherForecastListForm.razor.cs
+
+public partial class WeatherForecastListForm : ListComponentBase&lt;DbWeatherForecast, WeatherForecastDbContext&gt;
+{
+    /// The Injected Controller service for this record
+    [Inject]
+    protected WeatherForecastControllerService ControllerService { get; set; }
+
+    protected async override Task OnInitializedAsync()
+    {
+        // Sets the specific service
+        this.Service = this.ControllerService;
+        // Sets the max column that is cascaded into the UI Controls
+        this.UIOptions.MaxColumn = 3;
+        await base.OnInitializedAsync();
+    }
+
+    /// Method called when the user clicks on a row in the viewer.
+    protected void OnView(int id) =&gt; this.OnViewAsync&lt;WeatherForecastViewerForm&gt;(id);
+
+    /// Method called when the user clicks on a row Edit button.
+    protected void OnEdit(int id) =&gt; this.OnEditAsync&lt;WeatherForecastEditorForm&gt;(id);
+
+}</pre>
+
+<p>The Razor Markup below is an abbreviated version of the full file. This makes extensive use of UIControls which were covered in the previous article. See the comments for detail.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherForecastListForm.razor
+
+// Wrapper that cascades the values including event handlers
+&lt;UIWrapper UIOptions=&quot;@this.UIOptions&quot; RecordConfiguration=&quot;@this.Service.RecordConfiguration&quot; OnView=&quot;@OnView&quot; OnEdit=&quot;@OnEdit&quot;&gt;
+
+    // UI CardGrid is a Bootstrap Card
+    &lt;UICardGrid TRecord=&quot;DbWeatherForecast&quot; IsCollapsible=&quot;true&quot; Paging=&quot;this.Paging&quot; IsLoading=&quot;this.Loading&quot;&gt;
+
+        &lt;Title&gt;
+            @this.ListTitle
+        &lt;/Title&gt;
+
+        // Header Section of UICardGrid
+        &lt;TableHeader&gt;
+            // Header Grid columns
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;1&quot; FieldName=&quot;WeatherForecastID&quot;&gt;ID&lt;/UIGridTableHeaderColumn&gt;
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;2&quot; FieldName=&quot;Date&quot;&gt;Date&lt;/UIGridTableHeaderColumn&gt;
+            .....
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;7&quot;&gt;&lt;/UIGridTableHeaderColumn&gt;
+        &lt;/TableHeader&gt;
+
+        // Row Template Section of UICardGrid
+        &lt;RowTemplate&gt;
+            // Cascaded ID for the specific Row
+            &lt;CascadingValue Name=&quot;RecordID&quot; Value=&quot;@context.WeatherForecastID&quot;&gt;
+                &lt;UIGridTableColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;1&quot;&gt;@context.WeatherForecastID&lt;/UIGridTableColumn&gt;
+                &lt;UIGridTableColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;2&quot;&gt;@context.Date.ToShortDateString()&lt;/UIGridTableColumn&gt;
+                .....
+                &lt;UIGridTableEditColumn TRecord=&quot;DbWeatherForecast&quot;&gt;&lt;/UIGridTableEditColumn&gt;
+            &lt;/CascadingValue&gt;
+
+        &lt;/RowTemplate&gt;
+        // Navigation Section of UUCardGrid
+        &lt;Navigation&gt;
+
+            &lt;UIListButtonRow&gt;
+                // Paging part of UIListButtonRow
+                &lt;Paging&gt;
+                    &lt;PagingControl TRecord=&quot;DbWeatherForecast&quot; Paging=&quot;this.Paging&quot;&gt;&lt;/PagingControl&gt;
+                &lt;/Paging&gt;
+            &lt;/UIListButtonRow&gt;
+
+        &lt;/Navigation&gt;
+    &lt;/UICardGrid&gt;
+&lt;/UIWrapper&gt;</pre>
+
+<p>The Razor component uses a set of UIControls designed for list building. <code>UICardGrid</code> builds the Bootstrap Card and the table framework. You can explore the components code in the Github Repository - <a href="https://github.com/ShaunCurtis/CEC.Blazor/tree/master/CEC.Blazor/Components/UIControls/UIGridTable">CEC.Blazor/Components/UIControls/UIGridTable</a>.</p>
 
 <h3>Wrap Up</h3>
 
-<p>That wraps up this section. We&#39;ve looked at the Edit process in detail to see how the code works. The Viewer is simpler form of the editor. I&#39;ll look in more detail at the List components in a separate stand alone article. The next section looks in detail at UI Controls seen in the razor markup in this article.</p>
-
-<p>Some key points to note:</p>
+<p>That wraps up this article. Some key points to note:</p>
 
 <ol>
 	<li>The differences in code between a Blazor Server and a Blazor WASM project are very minor.</li>
-	<li>Almost all the functionality needed is implemented in the library components. Most of the application code is Razor markup for the individual record fields.</li>
-	<li>Extensive use of Async functionality iin the components and CRUD data access.</li>
+	<li>Almost all functionality is implemented in the library components. Most of the application code is Razor markup for the individual record fields.</li>
+	<li>Async functionality is used throughout the components and CRUD data access.</li>
 </ol>

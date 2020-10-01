@@ -1,18 +1,17 @@
 # Building a Database Appication in Blazor 
 # Part 7 - Some Key Project Infrastructure
 
-This is the final article in this series and looks at various bits of key infrastructure in more detail.  The articles so far are:
-
+This is the final article in this series and looks at various key bits of project and library infrastructure in more detail.  The articles so far are:
 
 1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
 2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
 3. [View Components - CRUD Edit and View Operations in the UI](https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C)
 4. [UI Components - Building HTML/CSS Controls](https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U)
 5. View Components - CRUD List Operations in the UI
-6. Adding vNew Record Types and the UI to Weather Projects
+6. Adding New Record Types and the UI to Weather Projects
 7. Some Key Project Infratructure
 
-The sections in this articles are:
+The sections covered in this article are:
 * Components and Events
 * Filtering and Paging
 * Entity Framework Extensions
@@ -25,7 +24,14 @@ The completed code for this article is in [CEC.Weather GitHub Repository](https:
 
 ## Components and Events
 
-A lot of the project code runs asynchronously.  Async programming requires a different approach to coding the UI for component initialisation and event handling.  The application no longer lives in a simple sequential world where data processing completes before the UI is rendered, and any updates cause a complete UI re-render.  Components are rendered before their dependant data is ready, and the UI updated piecemeal.
+Much of the project code runs asynchronously.  Async programming requires a different mindset to coding the UI for component initialisation and event handling.  The application no longer lives in a simple sequential world where data processing completes before the UI is rendered, and any updates cause a complete UI re-render.  Components are rendered before their dependant data is ready, and the UI updated piecemeal.
+
+The UI is driven by:
+
+1. The Renderer running *SetParametersAsync* on a component.
+2. Component registered Service Events.
+
+### UIErrorHandler
 
 The application uses the *UIErrorHandler* component to handle data loading and UI updates.  We looked at this component article 4 when looking at UI Controls.  *UIErrorHandler* has three states - Loading, Error and Complete.  All UI components/code wrapped within the component as child content is only rendered when the state is complete.  We don't need load handling code in each component on a form - the form only gets loaded when record/recordset loading is complete.
 
@@ -65,7 +71,7 @@ protected virtual bool IsDataLoading { get; set; } = true;
 protected virtual bool IsLoaded => !(this.IsDataLoading) && !(this.IsError);
 ```
 
-In *SetParametersAsync*, record loading takes place in *OnParametersSetAsync* (in *RecordComponentBase*).  *OnParametersSetAsync* is the last step in the *ComponentBase.SetParametersAsync* process.  Once *OnParametersSetAsync* is complete, *StateHasChanged* is called on the component, precipitatiing a  re-render. The record is either in error or loaded: *UIErrorHandler* either displays the error message or renders the child content.
+In the component *SetParametersAsync* cycle, record loading takes place in *OnParametersSetAsync* (*RecordComponentBase*).  *OnParametersSetAsync* is the last step in the *ComponentBase.SetParametersAsync* process.  Once complete, *StateHasChanged* is called on the component, precipitatiing a  re-render. The record is either in error or loaded: *UIErrorHandler* either displays the error message or renders the child content.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
@@ -97,11 +103,11 @@ protected virtual async Task LoadRecordAsync(bool firstload = false)
     }
 }
 ```
-During initialisation *IsDataLoading* is set to true.  If we're reponding to an event it not, so we just set it.  We only call *StateHasChanged* if *FirstLoad* is false.  *OnParametersSetAsync* specifically calls *LoadRecordAsync(true)*.  After loading the record, we set *IsDataLoading* to false and call *StateHasChanged* if necessary.
+During initialisation *IsDataLoading* is set to true.  If we're reponding to an event it's not, so we just set it.  We only call *StateHasChanged* if *FirstLoad* is false.  *OnParametersSetAsync* specifically calls *LoadRecordAsync(true)*.  After loading the record, we set *IsDataLoading* to false and call *StateHasChanged* if necessary.
 
-As we use *Querystrings* to specify record IDs, we need to handle where only the querystring changes but the view doesn't.  The Router detects this and raises a *SameComponentNavigation* event.
+The application uses *Querystring* to specify record IDs, it needs to handle situations where the querystring changes but the view doesn't.  The Router detects this and raises a *SameComponentNavigation* event.
 
-We wire up this event in *RecordComponentBase* in *OnAfterRenderAsync*.  Note that in general you should wire up events here at the end of the component initialisation cycle rather than earlier, to prevent "False Positives", re-re-re-....rendering/loading and sometimes infinite loops. 
+We wire up this event in *RecordComponentBase* in *OnAfterRenderAsync*.  In general you should wire up events at the end of the component initialisation cycle rather than earlier to prevent "False Positives", re-re-re-....rendering/loading and sometimes infinite loops. 
 
 ```c#
 // CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
@@ -126,19 +132,20 @@ protected async void OnSameRouteRouting(object sender, EventArgs e)
 ```
 ### Service Events
 
-The specific controller service manages the events for a record type.  There are five Contoller Service events exposed to the UI:
+The specific controller service manages the events for a record type.  There are six Contoller Service and two Router Service events used by UI components:
 
-1. RecordHasChanged - triggered when a record is updated or changed
-2. ListHasChanged - triggered when the recordset has changed
-3. FilterUpdated - triggered when the filter has changed.  Normally triggers a recordset update and thus a ListHasChanged event.
-4. OnDirty - triggered during editing when the record set differs from the stored record.
-5. OnClean - triggered when the edit record set is the same as the stored record.
-
-*OnDirty* and *OnClean* are specific to Edit Forms.  We'll explore List Forms here to look at how the vents are triggered and consumed.
+1. *RecordHasChanged* - *IControllerService* - triggered when a record is updated or changed
+2. *ListHasChanged* - *IControllerService* - triggered when the recordset has changed
+3. *FilterUpdated* - *IControllerService* - triggered when the filter has changed.  Normally triggers a recordset update and thus a ListHasChanged event.
+4. *OnDirty* - *IControllerService* - triggered during editing when the record set differs from the stored record.
+5. *OnClean* - *IControllerService* - triggered when the edit record set is the same as the stored record.
+6. *PageChanged* -*IPagingControllerService* - triggered when the List Page has changed.
+7. *SameComponentNavigation* - *RouterSessionService* - triggered when *NavigationManager* triggers a navigation event to the same View as Loaded.  
+8. *NavigationCancelled* - *RouterSessionService* - triggered when a *NavigationManager* event is cancelled by the Router because the record is dirty.  Used in Edit Forms.
 
 #### List Form Events
 
-The important core code to understand about List updates is shown below in the *BaseContontrollerService*. We need to differentiate between paging operations and recordset update operations (such as filter changes). The recordset set only gets updated is *this.IsRecords* is false.  So we set *this.Records=null* whenever we need to reload the recordset with the current filters.  *GetFilteredRecordListAsync* dictates what filtering is applied.  Filtering is covered in a later section of this article.
+The important secton of code form *BaseContontrollerService* for List updates is shown below. Paging operations, triggered by the *PagingControl*, differ from recordset List operations, triggered by filter changes and editing of records in dialogs.  *GetFilteredListAsync* is called as part of the process to get a new page.  However, it only runs when *this.IsRecords* is false.  *this.Records=null* is set to trigger a recordset update whenever the application needs the recordset reloaded using the current filters.  *GetFilteredRecordListAsync* dictates what filtering is applied.  It's virtual and can be overridden.  Filtering is covered in a later section of this article.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/BaseControllerService.cs
@@ -154,7 +161,7 @@ public async virtual Task<bool> GetFilteredListAsync()
     return false;
 }
 ```
-*IsRecords* checks the record count. -1 means the recordset is null, while 0 - x means the recordset exists.  Note a record count of 0 is a valid record count.
+*IsRecords* checks the record count. -1 means the recordset is null, while 0 - means the recordset exists.  A record count of 0 is a valid record count.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/BaseControllerService.cs
