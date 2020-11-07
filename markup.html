@@ -1,133 +1,949 @@
-<h1>Part 5 - View Components - CRUD List Operations in the UI</h1>
 
-<h2>Introduction</h2>
-
-<p>This is the fifth in the series looking at how to build and structure a real Database Application in Blazor. The articles so far are:</p>
+<p>This is the sixth article in the series. The previous articles are:</p>
 
 <ol>
 	<li><a href="https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P" rel="nofollow">Project Structure and Framework</a></li>
 	<li><a href="https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S" rel="nofollow">Services - Building the CRUD Data Layers</a></li>
 	<li><a href="https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C" rel="nofollow">View Components - CRUD Edit and View Operations in the UI</a></li>
 	<li><a href="https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U" rel="nofollow">UI Components - Building HTML/CSS Controls</a></li>
-	<li>View Components - CRUD List Operations in the UI</li>
+	<li><a href="https://www.codeproject.com/Articles/5280391/Building-a-Database-Application-in-Blazor-Part-5-V" rel="nofollow">View Components - CRUD List Operations in the UI</a></li>
+	<li>Adding New Record Types to Weather Projects</li>
 </ol>
 
-<p>Further articles:</p>
+<p>The purpose of the article is to walk the reader through adding new record types to the Weather application and writing the code to support them.  We're using station data from the UK Met Office. There&#39;s an command line importer project included in the solution to fetch and import more data - review the code to see how it works. The data is monthly records from British Weather Stations going back to 1928. The two record types are:</p>
 
+<code>
+    <UICard IsCollapsible="false">
+        <Header>
+            @this.PageTitle
+        </Header>
+        <Body>
+            <CascadingValue Value="@this.RecordFieldChanged" Name="OnRecordChange" TValue="Action<bool>">
+                <UIErrorHandler IsError="@this.IsError" IsLoading="this.IsDataLoading" ErrorMessage="@this.RecordErrorMessage">
+                    <UIContainer>
+                        <EditForm EditContext="this.EditContext">
+                            ......
+                        </EditForm>
+                    </UIContainer>
+                </UIErrorHandler>
+                <UIContainer>
+                    .... //Navigation Butttons that don't depend on the record 
+                </UIContainer>
+            </CascadingValue>
+        </Body>
+    </UICard>
+    
+</code>
 <ul>
-	<li>A walk through detailing how to add more records to the application - in this case weather stations and weather station data.</li>
+	<li>Weather Station</li>
+	<li>Weather Report from Stations</li>
 </ul>
 
-<p>This article looks in detail at building reusable List Presentation Layer components and deploying them in both Server and WASM projects.</p>
+<p>As we&#39;re building both Server and WASM deployments, there are 4 projects to work with:</p>
+
+<ol>
+	<li><strong>CEC.Weather</strong> - the shared project library</li>
+	<li><strong>CEC.Blazor.Server</strong> - the Server Project</li>
+	<li><strong>CEC.Blazor.WASM.Client</strong> - the WASM project</li>
+	<li><strong>CEC.Blazor.WASM.Server</strong> - the API server for the WASM project</li>
+</ol>
+
+<p>TMost of the code we add will be in the CEC.Weather library.</p>
 
 <h2>Sample Project and Code</h2>
 
-<p>All the sample code and libraries are on GitHub - <a href="https://github.com/ShaunCurtis/CEC.Blazor">CEC.Blazor GitHub Repository</a>.</p>
+<p>The base code is here in the <a href="https://github.com/ShaunCurtis/CEC.Weather">CEC.Blazor GitHub Repository</a>.</p>
+<p>The completed code for this article is in <a href="https://github.com/ShaunCurtis/CEC.Weather">CEC.Weather GitHub Repository</a>.</p>
 
-<h2>List Functionality</h2>
-
-<p>List components present far more challenges than other CRUD components. Functionality expected in a professional level list control includes:</p>
-
-<ul>
-	<li>Paging to handle large data sets</li>
-	<li>Column formatting to control column width and data overflow</li>
-	<li>Sorting on individual columns</li>
-	<li>Filtering</li>
-</ul>
-
-<h2>The Base Forms</h2>
-
-<p><code>ListComponentBase</code> is the base form for all lists.</p>
-
-<p>The hierarchy for <code>ListComponentBase</code> is:</p>
-
-<ul>
-	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ListComponentBase.cs"><code>ListComponentBase</code></a></li>
-	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs"><code>ControllerServiceComponentBase</code></a></li>
-	<li><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs"><code>ApplicationComponentBase</code></a></li>
-	<li><code>OwningComponentBase</code>.</li>
-</ul>
-
-<p>Not all the code is shown in the article - some class are simply too big and I only show the most relevant sections. All source files can be viewed on the Github site, and I include references or links to specific code files at appropriate places in the article. Much of the detail on what sections of code do is in the code comments.</p>
-
-<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs"><code>ApplicationComponentBase</code></a> contains all the common client application code for form components. It provides:</p>
+<h2>Overview of the Process</h2>
 
 <ol>
-	<li>Injection of common services, such as Navigation Manager, AuthenicationState, RouterSessionService and Application Configuration.</li>
-	<li>Authentication and user management.</li>
-	<li>Navigation and Routing through <code>NavigateTo</code>.</li>
-	<li>Core modal dialog event handling (for when a component is wrapping in a Modal Dialog).</li>
-	<li>State Updating.</li>
-	<li>A set of Common Properties that are used by th inheriting classes.</li>
+	<li>Add the Tables, Views and Stored Procedures to the Database</li>
+	<li>Add the Models, Services and Forms to the CEC.Weather Library</li>
+	<li>Add the Views and configure the Services in the Blazor.CEC.Server project.</li>
+	<li>Add the Views and configure the Services in the Blazor.CEC.WASM.Client project.</li>
+	<li>Add the Controllers and configure the Services in the Blazor.CEC.WASM.Server project.</li>
 </ol>
 
-<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ControllerServiceComponentBase.cs"><code>ControllerServiceComponentBase</code></a> adds CRUD and List code:</p>
+<h2>Database</h2>
+
+<p>Add tables for each record type to the database.</p>
+
+<pre data-lang-orig="sql" lang="sql">
+CREATE TABLE [dbo].[WeatherStation](
+	[WeatherStationID] [int] IDENTITY(1,1) NOT NULL,
+	[Name] [varchar](50) NOT NULL,
+	[Latitude] [decimal](8, 4) NOT NULL,
+	[Longitude] [decimal](8, 4) NOT NULL,
+	[Elevation] [decimal](8, 2) NOT NULL
+)</pre>
+
+<pre data-lang-orig="sql" lang="sql">
+CREATE TABLE [dbo].[WeatherReport](
+	[WeatherReportID] [int] IDENTITY(1,1) NOT NULL,
+	[WeatherStationID] [int] NOT NULL,
+	[Date] [smalldatetime] NULL,
+	[TempMax] [decimal](8, 4) NULL,
+	[TempMin] [decimal](8, 4) NULL,
+	[FrostDays] [int] NULL,
+	[Rainfall] [decimal](8, 4) NULL,
+	[SunHours] [decimal](8, 2) NULL
+)</pre>
+
+<p>Add views for each record type.</p>
+
+<p>Note:</p>
 
 <ol>
-	<li><code>IControllerService</code> property for the specific record controller service.</li>
-	<li>ID properties for the Record ID in CRUD.</li>
-	<li>UIOptions property for controlling display options in the UI Components.</li>
+	<li>They both map <code>ID</code> and <code>DisplayName</code> to conform with  <code>IDbRecord</code>.</li>
+	<li>WeatherReport maps Month and Year, so we can use EF for SQL Server filtering on those fields.</li>
+	<li>WeatherReport contains a JOIN to provide <code>WeatherStationName</code> in the record.</li>
 </ol>
 
-<p><a href="https://github.com/ShaunCurtis/CEC.Blazor/blob/master/CEC.Blazor/Components/BaseForms/ListComponentBase.cs"><code>ListComponentBase</code></a> adds list specific code which we will look at in more detail below.</p>
+<pre data-lang-orig="sql" lang="sql">
+CREATE VIEW vw_WeatherStation
+AS
+SELECT        
+    WeatherStationID AS ID, 
+    Name, 
+    Latitude, 
+    Longitude, 
+    Elevation, 
+    Name AS DisplayName
+FROM WeatherStation</pre>
 
-<h3>Paging</h3>
+<pre data-lang-orig="sql" lang="sql">
+CREATE VIEW vw_WeatherReport
+AS
+SELECT        
+    R.WeatherReportID as ID, 
+    R.WeatherStationID, 
+    R.Date, 
+    R.TempMax, 
+    R.TempMin, 
+    R.FrostDays, 
+    R.Rainfall, 
+    R.SunHours, 
+    S.Name AS WeatherStationName, 
+    &#39;Report For &#39; + CONVERT(VARCHAR(50), Date, 106) AS DisplayName
+    MONTH(R.Date) AS Month, 
+    YEAR(R.Date) AS Year
+FROM  WeatherReport AS R 
+LEFT INNER JOIN dbo.WeatherStation AS S ON R.WeatherStationID = S.WeatherStationID</pre>
 
-<p>Paging is implemented through the <code>IControllerPagingService</code> interface. <code>BaseControllerService</code> implements this interface. It&#39;s not shown in detail here because it&#39;s too big. Much of the functionality is pretty obvious - properties to track which page your on, how many pages and blocks you have, page size, etc - so we&#39;ll skip to the more interesting sections.</p>
+<p>Add Create/Update/Delete Stored Procedures for each record type</p>
 
-<h4>Initial Form Loading</h4>
+<pre data-lang-orig="sql" lang="sql">
+CREATE PROCEDURE sp_Create_WeatherStation
+	@ID int output
+    ,@Name decimal(4,1)
+    ,@Latitude decimal(8,4)
+    ,@Longitude decimal(8,4)
+    ,@Elevation decimal(8,2)
+AS
+BEGIN
+INSERT INTO dbo.WeatherStation
+           ([Name]
+           ,[Latitude]
+           ,[Longitude]
+           ,[Elevation])
+     VALUES (@Name
+           ,@Latitude
+           ,@Longitude
+           ,@Elevation)
+SELECT @ID  = SCOPE_IDENTITY();
+END</pre>
 
-<p>Lets start with loading a list form and look at <code>OnInitializedAsync</code> and <code>OnParametersSetAsync</code>.</p>
+<pre data-lang-orig="sql" lang="sql">
+CREATE PROCEDURE sp_Update_WeatherStation
+	@ID int
+    ,@Name decimal(4,1)
+    ,@Latitude decimal(8,4)
+    ,@Longitude decimal(8,4)
+    ,@Elevation decimal(8,2)
+AS
+BEGIN
+UPDATE dbo.WeatherStation
+	SET 
+           [Name] = @Name
+           ,[Latitude] = @Latitude
+           ,[Longitude] = @Longitude
+           ,[Elevation] = @Elevation
+WHERE @ID  = WeatherStationID
+END</pre>
+
+<pre data-lang-orig="sql" lang="sql">
+CREATE PROCEDURE sp_Delete_WeatherStation
+	@ID int
+AS
+BEGIN
+DELETE FROM WeatherStation
+WHERE @ID  = WeatherStationID
+END</pre>
+
+<pre data-lang-orig="sql" lang="sql">
+CREATE PROCEDURE sp_Create_WeatherReport
+	@ID int output
+    ,@WeatherStationID int
+    ,@Date smalldatetime
+    ,@TempMax decimal(8,4)
+    ,@TempMin decimal(8,4)
+    ,@FrostDays int
+    ,@Rainfall decimal(8,4)
+    ,@SunHours decimal(8,2)
+AS
+BEGIN
+INSERT INTO WeatherReport
+           ([WeatherStationID]
+           ,[Date]
+           ,[TempMax]
+           ,[TempMin]
+           ,[FrostDays]
+           ,[Rainfall]
+           ,[SunHours])
+     VALUES
+           (@WeatherStationID
+           ,@Date
+           ,@TempMax
+           ,@TempMin
+           ,@FrostDays
+           ,@Rainfall
+           ,@SunHours)
+SELECT @ID  = SCOPE_IDENTITY();
+END</pre>
+
+<pre data-lang-orig="sql" lang="sql">
+CREATE PROCEDURE sp_Update_WeatherReport
+	@ID int output
+    ,@WeatherStationID int
+    ,@Date smalldatetime
+    ,@TempMax decimal(8,4)
+    ,@TempMin decimal(8,4)
+    ,@FrostDays int
+    ,@Rainfall decimal(8,4)
+    ,@SunHours decimal(8,2)
+AS
+BEGIN
+UPDATE WeatherReport
+   SET [WeatherStationID] = @WeatherStationID
+      ,[Date] = @Date
+      ,[TempMax] = @TempMax
+      ,[TempMin] = @TempMin
+      ,[FrostDays] = @FrostDays
+      ,[Rainfall] = @Rainfall
+      ,[SunHours] = @SunHours
+WHERE @ID  = WeatherReportID
+END</pre>
+
+<pre data-lang-orig="sql" lang="sql">
+CREATE PROCEDURE sp_Delete_WeatherReport
+	@ID int
+AS
+BEGIN
+DELETE FROM WeatherReport
+WHERE @ID  = WeatherReportID
+END</pre>
+
+<p>All the SQL, including two weather station datasets, is available as a set of files in the SQL folder of the GitHub Repository.  You can use these to build a copy of the database.</p>
+
+<h2>CEC.Weather Library</h2>
+
+<p>We need to:</p>
+
+<ol>
+	<li>Add the model classes for each record type.</li>
+	<li>Add some utility classes specific to the project:
+	<ul>
+		<li>Add extensions to <code>decimal</code> to display our fields correctly (Latitude and Longitude).</li>
+		<li>Add custom validators for the editors for each record type.</li>
+	</ul>
+	</li>
+	<li>Update the WeatherForecastDBContext to handle the new record types.</li>
+	<li>Build specific Controller and Data Services to handle each record type.</li>
+	<li>Build specific List/Edit/View Forms for each record type.</li>
+	<li>Update the NavMenu component.</li>
+</ol>
+
+<h3>Add Model Classes for the Records</h3>
+
+<ol>
+	<li>Implement IDbRecord.</li>
+	<li>Add SPParameter custom attributes to all the properties that map to the Stored Procedures.</li>
+	<li>Add <code>[Not Mapped]</code> attribute to all properties that are not mapped to the Database View.</li>
+</ol>
 
 <pre lang="c#">
-// CEC.Weather/Components/Forms/WeatherForecastListForm.razor.cs
-protected async override Task OnInitializedAsync()
+// CEC.Weather/Model/DbWeatherStation.cs
+public class DbWeatherStation :
+    IDbRecord&lt;DbWeatherStation&gt;
 {
-    // Sets the specific service
-    this.Service = this.ControllerService;
-    // Sets the max width column
-    this.UIOptions.MaxColumn = 3;
-    // base call
-    await base.OnInitializedAsync();
-}</pre>
+    [NotMapped]
+    public int WeatherStationID { get =&gt; this.ID; }
+    
+    [SPParameter(IsID = true, DataType = SqlDbType.Int)]
+    public int ID { get; set; } = -1;
 
-<pre lang="c#">
-// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
+    [SPParameter(DataType = SqlDbType.VarChar)]
+    public string Name { get; set; } = &quot;No Name&quot;;
 
-/// Should be overridden in inherited components
-/// and called after setting the Service
-protected async override Task OnInitializedAsync()
-{
-    if (this.IsService)
+    [SPParameter(DataType = SqlDbType.Decimal)]
+    [Column(TypeName =&quot;decimal(8,4)&quot;)]
+    public decimal Latitude { get; set; } = 1000;
+
+    [SPParameter(DataType = SqlDbType.Decimal)]
+    [Column(TypeName =&quot;decimal(8,4)&quot;)]
+    public decimal Longitude { get; set; } = 1000;
+
+    [SPParameter(DataType = SqlDbType.Decimal)]
+    [Column(TypeName =&quot;decimal(8,2)&quot;)]
+    public decimal Elevation { get; set; } = 1000;
+
+    public string DisplayName { get; set; }
+
+    [NotMapped]
+    public string LatLong =&gt; $&quot;{this.Latitude.AsLatitude()} {this.Longitude.AsLongitude()}&quot;;
+
+    public void SetNew() =&gt; this.ID = 0;
+
+    public DbWeatherStation ShadowCopy()
     {
-        // Reset the Service i.e. clear the record list, filter, etc.
-        await this.Service.Reset();
-        // Set the title if we don&#39;t have one
-        this.ListTitle = string.IsNullOrEmpty(this.ListTitle) ? $&quot;List of {this.Service.RecordConfiguration.RecordListDecription}&quot; : this.ListTitle;
+        return new DbWeatherStation() {
+            Name = this.Name,
+            ID = this.ID,
+            Latitude = this.Latitude,
+            Longitude = this.Longitude,
+            Elevation = this.Elevation,
+            DisplayName = this.DisplayName
+        };
     }
-    // base call
-    await base.OnInitializedAsync();
 }</pre>
 
 <pre lang="c#">
-// CEC.Blazor/Components/BaseForms/ApplicationComponentBase.cs
-protected async override Task OnInitializedAsync()
+// CEC.Weather/Model/DbWeatherReport.cs
+public class DbWeatherReport :IDbRecord&lt;DbWeatherReport&gt;
 {
-    // Gets the user if Authentication is enabled
-    if (this.AuthenticationState != null) await this.GetUserAsync();
-    // Check if we have a query string value in the Route for ID.  If so use it
-    if (this.NavManager.TryGetQueryString&lt;int&gt;(&quot;id&quot;, out int querystringid)) this.ID = querystringid &gt; -1 ? querystringid : this._ID;
-    // base call that bottoms out here
-    await base.OnInitializedAsync();
+    [NotMapped]
+    public int WeatherReportID { get =&gt; this.ID; }
+
+    [SPParameter(IsID = true, DataType = SqlDbType.Int)]
+    public int ID { get; set; } = -1;
+
+    [SPParameter(DataType = SqlDbType.Int)]
+    public int WeatherStationID { get; set; } = -1;
+
+    [SPParameter(DataType = SqlDbType.SmallDateTime)]
+    public DateTime Date { get; set; } = DateTime.Now.Date;
+
+    [SPParameter(DataType = SqlDbType.Decimal)]
+    [Column(TypeName =&quot;decimal(8,4)&quot;)]
+    public decimal TempMax { get; set; } = 1000;
+
+    [SPParameter(DataType = SqlDbType.Decimal)]
+    [Column(TypeName =&quot;decimal(8,4)&quot;)]
+    public decimal TempMin { get; set; } = 1000;
+
+    [SPParameter(DataType = SqlDbType.Int)]
+    public int FrostDays { get; set; } = -1;
+
+    [SPParameter(DataType = SqlDbType.Decimal)]
+    [Column(TypeName =&quot;decimal(8,4)&quot;)]
+    public decimal Rainfall { get; set; } = -1;
+
+    [SPParameter(DataType = SqlDbType.Decimal)]
+    [Column(TypeName =&quot;decimal(8,2)&quot;)]
+    public decimal SunHours { get; set; } = -1;
+
+    public string DisplayName { get; set; }
+
+    public string WeatherStationName { get; set; }
+
+    public int Month { get; set; }
+
+    public int Year { get; set; }
+
+    [NotMapped]
+    public string MonthName =&gt; CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(this.Month);
+
+    [NotMapped]
+    public string MonthYearName =&gt; $&quot;{this.MonthName}-{this.Year}&quot;;
+
+    public void SetNew() =&gt; this.ID = 0;
+
+    public DbWeatherReport ShadowCopy()
+    {
+        return new DbWeatherReport() {
+            ID = this.ID,
+            Date = this.Date,
+            TempMax = this.TempMax,
+            TempMin = this.TempMin,
+            FrostDays = this.FrostDays,
+            Rainfall = this.Rainfall,
+            SunHours = this.SunHours,
+            DisplayName = this.DisplayName,
+            WeatherStationID = this.WeatherStationID,
+            WeatherStationName = this.WeatherStationName
+        };
+    }
 }</pre>
+
+<h3>Add Utility Classes</h3>
+
+<p>Extension methods are great at making life simnpler. Longitudes and Latitudes are coded as decimals, but we need to present them a little differently in the UI. We use decimal extension methods to do this.</p>
+
+<pre lang="c#">
+// CEC.Weather/Extensions/DecimalExtensions.cs
+public static class DecimalExtensions
+{
+    public static string AsLatitude(this decimal value)  =&gt; value &gt; 0 ? $&quot;{value}N&quot; : $&quot;{Math.Abs(value)}S&quot;;
+
+    public static string AsLongitude(this decimal value) =&gt; value &gt; 0 ? $&quot;{value}E&quot; : $&quot;{Math.Abs(value)}W&quot;;
+}</pre>
+
+<p>The application uses Blazored Fluent Validation for the Editors. It&#39;s more flexible that the built in validation.</p>
+
+<pre lang="c#">
+// CEC.Weather/Data/Validators/WeatherStationValidator.cs
+using FluentValidation;
+
+namespace CEC.Weather.Data.Validators
+{
+    public class WeatherStationValidator : AbstractValidator&lt;DbWeatherStation&gt;
+    {
+        public WeatherStationValidator()
+        {
+            RuleFor(p =&gt; p.Longitude).LessThan(-180).WithMessage(&quot;Longitude must be -180 or greater&quot;);
+            RuleFor(p =&gt; p.Longitude).GreaterThan(180).WithMessage(&quot;Longitude must be 180 or less&quot;);
+            RuleFor(p =&gt; p.Latitude).LessThan(-90).WithMessage(&quot;Latitude must be -90 or greater&quot;);
+            RuleFor(p =&gt; p.Latitude).GreaterThan(90).WithMessage(&quot;Latitude must be 90 or less&quot;);
+            RuleFor(p =&gt; p.Name).MinimumLength(1).WithMessage(&quot;Your need a Station Name!&quot;);
+        }
+    }
+}</pre>
+
+<pre lang="c#">
+// CEC.Weather/Data/Validators/WeatherReportValidator.cs
+using FluentValidation;
+
+namespace CEC.Weather.Data.Validators
+{
+    public class WeatherReportValidator : AbstractValidator&lt;DbWeatherReport&gt;
+    {
+        public WeatherReportValidator()
+        {
+            RuleFor(p =&gt; p.Date).NotEmpty().WithMessage(&quot;You must select a date&quot;);
+            RuleFor(p =&gt; p.TempMax).LessThan(60).WithMessage(&quot;The temperature must be less than 60C&quot;);
+            RuleFor(p =&gt; p.TempMax).GreaterThan(-40).WithMessage(&quot;The temperature must be greater than -40C&quot;);
+            RuleFor(p =&gt; p.TempMin).LessThan(60).WithMessage(&quot;The temperature must be less than 60C&quot;);
+            RuleFor(p =&gt; p.TempMin).GreaterThan(-40).WithMessage(&quot;The temperature must be greater than -40C&quot;);
+            RuleFor(p =&gt; p.FrostDays).LessThan(32).WithMessage(&quot;There&#39;s a maximun of 31 days in any month&quot;);
+            RuleFor(p =&gt; p.FrostDays).GreaterThan(0).WithMessage(&quot;valid entries are 0-31&quot;);
+            RuleFor(p =&gt; p.Rainfall).GreaterThan(0).WithMessage(&quot;valid entries are 0-31&quot;);
+            RuleFor(p =&gt; p.SunHours).LessThan(24).WithMessage(&quot;Valid entries 0-24&quot;);
+            RuleFor(p =&gt; p.SunHours).GreaterThan(0).WithMessage(&quot;Valid entries 0-24&quot;);
+        }
+    }
+}</pre>
+
+<h3>Update WeatherForecastDbContext</h3>
+
+<p>Add two new <code>DbSet</code> properties to the class and two <code>modelBuilder</code> calls to <code>OnModelCreating</code>.</p>
+
+<pre lang="c#">
+// CEC.Weather/Data/WeatherForecastDbContext.cs
+......
+
+public DbSet&lt;DbWeatherStation&gt; WeatherStation { get; set; }
+
+public DbSet&lt;DbWeatherReport&gt; WeatherReport { get; set; }
+
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+......
+    modelBuilder
+        .Entity&lt;DbWeatherStation&gt;(eb =&gt;
+        {
+            eb.HasNoKey();
+            eb.ToView(&quot;vw_WeatherStation&quot;);
+        });
+    modelBuilder
+        .Entity&lt;DbWeatherReport&gt;(eb =&gt;
+        {
+            eb.HasNoKey();
+            eb.ToView(&quot;vw_WeatherReport&quot;);
+        });
+}</pre>
+
+<h3>Add Data and Controller Services</h3>
+
+<p>Only the Weather Station Services code is shown here - the Weather Report Services are identical.</p>
+
+<p>Add the <code>IWeatherStationDataService</code> and <code>IWeatherReportDataService</code> interfaces.</p>
+
+<pre lang="c#">
+// CEC.Weather/Services/Interfaces/IWeatherStationDataService.cs
+using CEC.Blazor.Services;
+using CEC.Weather.Data;
+
+namespace CEC.Weather.Services
+{
+    public interface IWeatherStationDataService : 
+        IDataService&lt;DbWeatherStation, WeatherForecastDbContext&gt;
+    {}
+}</pre>
+
+<p>Add the Server Data Services.</p>
+
+<pre lang="c#">
+// CEC.Weather/Services/DataServices/WeatherStationServerDataService.cs
+using CEC.Blazor.Data;
+using CEC.Weather.Data;
+using CEC.Blazor.Services;
+using Microsoft.Extensions.Configuration;
+
+namespace CEC.Weather.Services
+{
+    public class WeatherStationServerDataService :
+        BaseServerDataService&lt;DbWeatherStation, WeatherForecastDbContext&gt;,
+        IWeatherStationDataService
+    {
+        public WeatherStationServerDataService(IConfiguration configuration, IDbContextFactory&lt;WeatherForecastDbContext&gt; dbcontext) : base(configuration, dbcontext)
+        {
+            this.RecordConfiguration = new RecordConfigurationData() { RecordName = &quot;WeatherStation&quot;, RecordDescription = &quot;Weather Station&quot;, RecordListName = &quot;WeatherStation&quot;, RecordListDecription = &quot;Weather Stations&quot; };
+        }
+    }
+}</pre>
+
+<p>Add the WASM Data Services</p>
+
+<pre lang="c#">
+// CEC.Weather/Services/DataServices/WeatherStationWASMDataService.cs
+using CEC.Weather.Data;
+using CEC.Blazor.Services;
+using Microsoft.Extensions.Configuration;
+using System.Net.Http;
+using CEC.Blazor.Data;
+
+namespace CEC.Weather.Services
+{
+    public class WeatherStationWASMDataService :
+        BaseWASMDataService&lt;DbWeatherStation, WeatherForecastDbContext&gt;,
+        IWeatherStationDataService
+    {
+        public WeatherStationWASMDataService(IConfiguration configuration, HttpClient httpClient) : base(configuration, httpClient)
+        {
+            this.RecordConfiguration = new RecordConfigurationData() { RecordName = &quot;WeatherStation&quot;, RecordDescription = &quot;Weather Station&quot;, RecordListName = &quot;WeatherStation&quot;, RecordListDecription = &quot;Weather Stations&quot; };
+        }
+    }
+}</pre>
+
+<p>Add the Controller Services</p>
+
+<pre lang="c#">
+// CEC.Weather/Services/ControllerServices/WeatherStationControllerService.cs
+using CEC.Weather.Data;
+using CEC.Blazor.Services;
+using CEC.Blazor.Utilities;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
+
+namespace CEC.Weather.Services
+{
+    public class WeatherStationControllerService : BaseControllerService&lt;DbWeatherStation, WeatherForecastDbContext&gt;, IControllerService&lt;DbWeatherStation, WeatherForecastDbContext&gt;
+    {
+        /// &lt;&lt;span class=&quot;pl-ent&quot;&gt;summary&gt;&lt;/span&gt;
+        /// List of Outlooks for Select Controls
+        /// &lt;/&lt;span class=&quot;pl-ent&quot;&gt;summary&gt;&lt;/span&gt;
+        public SortedDictionary&lt;int, string&gt; OutlookOptionList =&gt; Utils.GetEnumList&lt;WeatherOutlook&gt;();
+
+        public WeatherStationControllerService(NavigationManager navmanager, IConfiguration appconfiguration, IWeatherStationDataService DataService) : base(appconfiguration, navmanager)
+        {
+            this.Service = DataService;
+            this.DefaultSortColumn = &quot;ID&quot;;
+        }
+    }
+}</pre>
+
+<h2>Forms</h2>
+
+<p>Almost all form code is implemented in the respective base classes. The code pages are therefore simple, while the razor markup pages contain the record field specific UI information.</p>
+
+<h3>WeatherStation Viewer Form</h3>
+
+<p>The code behind page is trivial - everything is handled by <code>RecordComponentBase</code>.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherStationViewerForm.razor.cs
+
+using CEC.Blazor.Components.BaseForms;
+using CEC.Weather.Data;
+using CEC.Weather.Services;
+using Microsoft.AspNetCore.Components;
+using System.Threading.Tasks;
+
+namespace CEC.Weather.Components
+{
+    public partial class WeatherStationViewerForm : RecordComponentBase&lt;DbWeatherStation, WeatherForecastDbContext&gt;
+    {
+        [Inject]
+        private WeatherStationControllerService ControllerService { get; set; }
+
+        protected async override Task OnInitializedAsync()
+        {
+            this.Service = this.ControllerService;
+            // Set the delay on the record load as this is a demo project
+            this.DemoLoadDelay = 0;
+            await base.OnInitializedAsync();
+        }
+    }
+}</pre>
+
+<p>The razor page builds out the UI controls for displaying the record fields. Note that we have to use <code>@using</code> statements in the markup as this is a library file with no <code>_Imports.Razor</code>.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherStationViewerForm.razor
+
+@using CEC.Blazor.Components
+@using CEC.Blazor.Components.BaseForms
+@using CEC.Blazor.Components.UIControls
+@using CEC.Weather.Data
+@using CEC.FormControls.Components.FormControls
+
+@namespace CEC.Weather.Components
+@inherits RecordComponentBase&lt;DbWeatherReport, WeatherForecastDbContext&gt;
+
+&lt;UICard&gt;
+    &lt;Header&gt;
+        @this.PageTitle
+    &lt;/Header&gt;
+    &lt;Body&gt;
+        &lt;UIErrorHandler IsError=&quot;this.IsError&quot; IsLoading=&quot;this.IsDataLoading&quot; ErrorMessage=&quot;@this.RecordErrorMessage&quot;&gt;
+            &lt;UIContainer&gt;
+                &lt;UIRow&gt;
+                    &lt;UILabelColumn Columns=&quot;2&quot;&gt;
+                        Month/Year
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;2&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.MonthYearName&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                    &lt;UILabelColumn Columns=&quot;2&quot;&gt;
+                        Station
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;4&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.WeatherStationName&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                    &lt;UILabelColumn Columns=&quot;1&quot;&gt;
+                        ID
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;1&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.ID.ToString()&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                &lt;/UIRow&gt;
+                &lt;UIRow&gt;
+                    &lt;UILabelColumn Columns=&quot;2&quot;&gt;
+                        Max Temperature &amp;deg; C:
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;4&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.TempMax.ToString()&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                    &lt;UILabelColumn Columns=&quot;2&quot;&gt;
+                        Min Temperature &amp;deg; C:
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;4&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.TempMin.ToString()&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                &lt;/UIRow&gt;
+                &lt;UIRow&gt;
+                    &lt;UILabelColumn Columns=&quot;2&quot;&gt;
+                        Frost Days
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;2&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.FrostDays.ToString()&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                    &lt;UILabelColumn Columns=&quot;2&quot;&gt;
+                        Rainfall (mm)
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;2&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.Rainfall.ToString()&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                    &lt;UILabelColumn Columns=&quot;2&quot;&gt;
+                        Sunshine (hrs)
+                    &lt;/UILabelColumn&gt;
+                    &lt;UIColumn Columns=&quot;2&quot;&gt;
+                        &lt;FormControlPlainText Value=&quot;@this.Service.Record.SunHours.ToString()&quot;&gt;&lt;/FormControlPlainText&gt;
+                    &lt;/UIColumn&gt;
+                &lt;/UIRow&gt;
+            &lt;/UIContainer&gt;
+        &lt;/UIErrorHandler&gt;
+        &lt;UIContainer&gt;
+            &lt;UIRow&gt;
+                &lt;UIButtonColumn Columns=&quot;12&quot;&gt;
+                    &lt;UIButton Show=&quot;!this.IsModal&quot; ColourCode=&quot;Bootstrap.ColourCode.nav&quot; ClickEvent=&quot;(e =&gt; this.NavigateTo(PageExitType.ExitToList))&quot;&gt;
+                        Exit To List
+                    &lt;/UIButton&gt;
+                    &lt;UIButton Show=&quot;!this.IsModal&quot; ColourCode=&quot;Bootstrap.ColourCode.nav&quot; ClickEvent=&quot;(e =&gt; this.NavigateTo(PageExitType.ExitToLast))&quot;&gt;
+                        Exit
+                    &lt;/UIButton&gt;
+                    &lt;UIButton Show=&quot;this.IsModal&quot; ColourCode=&quot;Bootstrap.ColourCode.nav&quot; ClickEvent=&quot;(e =&gt; this.ModalExit())&quot;&gt;
+                        Exit
+                    &lt;/UIButton&gt;
+                &lt;/UIButtonColumn&gt;
+            &lt;/UIRow&gt;
+        &lt;/UIContainer&gt;
+    &lt;/Body&gt;
+&lt;/UICard&gt;</pre>
+
+<h3>WeatherStation Editor Form</h3>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherStationEditorForm.razor.cs
+
+using CEC.Blazor.Components.BaseForms;
+using CEC.Weather.Data;
+using CEC.Weather.Services;
+using Microsoft.AspNetCore.Components;
+using System.Threading.Tasks;
+
+namespace CEC.Weather.Components
+{
+    public partial class WeatherStationEditorForm : EditRecordComponentBase&lt;DbWeatherStation, WeatherForecastDbContext&gt;
+    {
+        [Inject]
+        public WeatherStationControllerService ControllerService { get; set; }
+
+        protected async override Task OnInitializedAsync()
+        {
+            // Assign the correct controller service
+            this.Service = this.ControllerService;
+            // Set the delay on the record load as this is a demo project
+            this.DemoLoadDelay = 0;
+            await base.OnInitializedAsync();
+        }
+    }
+}</pre>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherStationEditorForm.razor
+@using CEC.Blazor.Components
+@using CEC.Blazor.Components.BaseForms
+@using CEC.Blazor.Components.UIControls
+@using CEC.Weather.Data
+@using CEC.FormControls.Components.FormControls
+@using Microsoft.AspNetCore.Components.Forms
+@using Blazored.FluentValidation
+
+@namespace CEC.Weather.Components
+@inherits EditRecordComponentBase&lt;DbWeatherStation, WeatherForecastDbContext&gt;
+
+&lt;UICard IsCollapsible=&quot;false&quot;&gt;
+    &lt;Header&gt;
+        @this.PageTitle
+    &lt;/Header&gt;
+    &lt;Body&gt;
+        &lt;CascadingValue Value=&quot;@this.RecordFieldChanged&quot; Name=&quot;OnRecordChange&quot; TValue=&quot;Action&lt;bool&gt;&quot;&gt;
+            &lt;UIErrorHandler IsError=&quot;@this.IsError&quot; IsLoading=&quot;this.IsDataLoading&quot; ErrorMessage=&quot;@this.RecordErrorMessage&quot;&gt;
+                &lt;UIContainer&gt;
+                    &lt;EditForm EditContext=&quot;this.EditContext&quot;&gt;
+                        &lt;FluentValidationValidator DisableAssemblyScanning=&quot;@true&quot; /&gt;
+                        &lt;UIFormRow&gt;
+                            &lt;UILabelColumn Columns=&quot;4&quot;&gt;
+                                Record ID:
+                            &lt;/UILabelColumn&gt;
+                            &lt;UIColumn Columns=&quot;4&quot;&gt;
+                                &lt;FormControlPlainText Value=&quot;@this.Service.Record.ID.ToString()&quot;&gt;&lt;/FormControlPlainText&gt;
+                            &lt;/UIColumn&gt;
+                        &lt;/UIFormRow&gt;
+                        &lt;UIFormRow&gt;
+                            &lt;UILabelColumn Columns=&quot;4&quot;&gt;
+                                Name:
+                            &lt;/UILabelColumn&gt;
+                            &lt;UIColumn Columns=&quot;4&quot;&gt;
+                                &lt;FormControlText class=&quot;form-control&quot; @bind-Value=&quot;this.Service.Record.Name&quot; RecordValue=&quot;this.Service.ShadowRecord.Name&quot;&gt;&lt;/FormControlText&gt;
+                            &lt;/UIColumn&gt;
+                            &lt;UIColumn Columns=&quot;4&quot;&gt;
+                                &lt;ValidationMessage For=@(() =&gt; this.Service.Record.Name) /&gt;
+                            &lt;/UIColumn&gt;
+                        &lt;/UIFormRow&gt;
+                        &lt;UIFormRow&gt;
+                            &lt;UILabelColumn Columns=&quot;4&quot;&gt;
+                                Latitude
+                            &lt;/UILabelColumn&gt;
+                            &lt;UIColumn Columns=&quot;2&quot;&gt;
+                                &lt;FormControlNumber class=&quot;form-control&quot; @bind-Value=&quot;this.Service.Record.Latitude&quot; RecordValue=&quot;this.Service.ShadowRecord.Latitude&quot;&gt;&lt;/FormControlNumber&gt;
+                            &lt;/UIColumn&gt;
+                            &lt;UIColumn Columns=&quot;6&quot;&gt;
+                                &lt;ValidationMessage For=@(() =&gt; this.Service.Record.Latitude) /&gt;
+                            &lt;/UIColumn&gt;
+                        &lt;/UIFormRow&gt;
+                        &lt;UIFormRow&gt;
+                            &lt;UILabelColumn Columns=&quot;4&quot;&gt;
+                                Longitude
+                            &lt;/UILabelColumn&gt;
+                            &lt;UIColumn Columns=&quot;2&quot;&gt;
+                                &lt;FormControlNumber class=&quot;form-control&quot; @bind-Value=&quot;this.Service.Record.Longitude&quot; RecordValue=&quot;this.Service.ShadowRecord.Longitude&quot;&gt;&lt;/FormControlNumber&gt;
+                            &lt;/UIColumn&gt;
+                            &lt;UIColumn Columns=&quot;6&quot;&gt;
+                                &lt;ValidationMessage For=@(() =&gt; this.Service.Record.Longitude) /&gt;
+                            &lt;/UIColumn&gt;
+                        &lt;/UIFormRow&gt;
+                        &lt;UIFormRow&gt;
+                            &lt;UILabelColumn Columns=&quot;4&quot;&gt;
+                                Elevation
+                            &lt;/UILabelColumn&gt;
+                            &lt;UIColumn Columns=&quot;2&quot;&gt;
+                                &lt;FormControlNumber class=&quot;form-control&quot; @bind-Value=&quot;this.Service.Record.Elevation&quot; RecordValue=&quot;this.Service.ShadowRecord.Elevation&quot;&gt;&lt;/FormControlNumber&gt;
+                            &lt;/UIColumn&gt;
+                            &lt;UIColumn Columns=&quot;6&quot;&gt;
+                                &lt;ValidationMessage For=@(() =&gt; this.Service.Record.Elevation) /&gt;
+                            &lt;/UIColumn&gt;
+                        &lt;/UIFormRow&gt;
+                    &lt;/EditForm&gt;
+                &lt;/UIContainer&gt;
+            &lt;/UIErrorHandler&gt;
+            &lt;UIContainer&gt;
+                &lt;UIRow&gt;
+                    &lt;UIColumn Columns=&quot;7&quot;&gt;
+                        &lt;UIAlert Alert=&quot;this.AlertMessage&quot; SizeCode=&quot;Bootstrap.SizeCode.sm&quot;&gt;&lt;/UIAlert&gt;
+                    &lt;/UIColumn&gt;
+                    &lt;UIButtonColumn Columns=&quot;5&quot;&gt;
+                        &lt;UIButton Show=&quot;this.NavigationCancelled &amp;&amp; this.IsLoaded&quot; ClickEvent=&quot;this.Cancel&quot; ColourCode=&quot;Bootstrap.ColourCode.cancel&quot;&gt;Cancel&lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;this.NavigationCancelled &amp;&amp; this.IsLoaded&quot; ClickEvent=&quot;this.SaveAndExit&quot; ColourCode=&quot;Bootstrap.ColourCode.save&quot;&gt;Save &amp;amp; Exit&lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;(!this.IsClean) &amp;&amp; this.IsLoaded&quot; ClickEvent=&quot;this.Save&quot; ColourCode=&quot;Bootstrap.ColourCode.save&quot;&gt;Save&lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;this.ShowExitConfirmation &amp;&amp; this.IsLoaded&quot; ClickEvent=&quot;this.ConfirmExit&quot; ColourCode=&quot;Bootstrap.ColourCode.danger_exit&quot;&gt;Exit Without Saving&lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;(!this.NavigationCancelled) &amp;&amp; !this.ShowExitConfirmation&quot; ClickEvent=&quot;(e =&gt; this.NavigateTo(PageExitType.ExitToList))&quot; ColourCode=&quot;Bootstrap.ColourCode.nav&quot;&gt;Exit To List&lt;/UIButton&gt;
+                        &lt;UIButton Show=&quot;(!this.NavigationCancelled) &amp;&amp; !this.ShowExitConfirmation&quot; ClickEvent=&quot;this.Exit&quot; ColourCode=&quot;Bootstrap.ColourCode.nav&quot;&gt;Exit&lt;/UIButton&gt;
+                    &lt;/UIButtonColumn&gt;
+                &lt;/UIRow&gt;
+            &lt;/UIContainer&gt;
+        &lt;/CascadingValue&gt;
+    &lt;/Body&gt;
+&lt;/UICard&gt;</pre>
+
+<h3>WeatherStation List Form</h3>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherStation/WeatherStationListForm.razor.cs
+@using CEC.Blazor.Components
+@using CEC.Blazor.Components.BaseForms
+@using CEC.Blazor.Components.UIControls
+@using CEC.Weather.Data
+@using CEC.Weather.Extensions
+@using CEC.Blazor.Extensions
+
+@namespace CEC.Weather.Components
+
+@inherits ListComponentBase&lt;DbWeatherStation, WeatherForecastDbContext&gt;
+
+&lt;UIWrapper UIOptions=&quot;@this.UIOptions&quot; RecordConfiguration=&quot;@this.Service.RecordConfiguration&quot; OnView=&quot;@OnView&quot; OnEdit=&quot;@OnEdit&quot;&gt;
+    &lt;UICardGrid TRecord=&quot;DbWeatherStation&quot; IsCollapsible=&quot;true&quot; Paging=&quot;this.Paging&quot; IsLoading=&quot;this.Loading&quot;&gt;
+        &lt;Title&gt;
+            @this.ListTitle
+        &lt;/Title&gt;
+        &lt;TableHeader&gt;
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;1&quot; FieldName=&quot;ID&quot;&gt;ID&lt;/UIGridTableHeaderColumn&gt;
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;2&quot; FieldName=&quot;Name&quot;&gt;Name&lt;/UIGridTableHeaderColumn&gt;
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;3&quot; FieldName=&quot;Latitude&quot;&gt;Latitiude&lt;/UIGridTableHeaderColumn&gt;
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;4&quot; FieldName=&quot;Longitude&quot;&gt;Longitude&lt;/UIGridTableHeaderColumn&gt;
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;5&quot; FieldName=&quot;Elevation&quot;&gt;Elevation&lt;/UIGridTableHeaderColumn&gt;
+            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;6&quot;&gt;&lt;/UIGridTableHeaderColumn&gt;
+        &lt;/TableHeader&gt;
+        &lt;RowTemplate&gt;
+            &lt;CascadingValue Name=&quot;RecordID&quot; Value=&quot;@context.ID&quot;&gt;
+                &lt;UIGridTableColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;1&quot;&gt;@context.ID&lt;/UIGridTableColumn&gt;
+                &lt;UIGridTableColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;2&quot;&gt;@context.Name&lt;/UIGridTableColumn&gt;
+                &lt;UIGridTableColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;3&quot;&gt;@context.Latitude.AsLatitude()&lt;/UIGridTableColumn&gt;
+                &lt;UIGridTableColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;4&quot;&gt;@context.Longitude.AsLongitude()&lt;/UIGridTableColumn&gt;
+                &lt;UIGridTableColumn TRecord=&quot;DbWeatherStation&quot; Column=&quot;5&quot;&gt;@context.Elevation.DecimalPlaces(1)&lt;/UIGridTableColumn&gt;
+                &lt;UIGridTableEditColumn TRecord=&quot;DbWeatherStation&quot;&gt;&lt;/UIGridTableEditColumn&gt;
+            &lt;/CascadingValue&gt;
+        &lt;/RowTemplate&gt;
+        &lt;Navigation&gt;
+            &lt;UIListButtonRow&gt;
+                &lt;Paging&gt;
+                    &lt;PagingControl TRecord=&quot;DbWeatherStation&quot; Paging=&quot;this.Paging&quot;&gt;&lt;/PagingControl&gt;
+                &lt;/Paging&gt;
+            &lt;/UIListButtonRow&gt;
+        &lt;/Navigation&gt;
+    &lt;/UICardGrid&gt;
+&lt;/UIWrapper&gt;
+&lt;BootstrapModal @ref=&quot;this._BootstrapModal&quot;&gt;&lt;/BootstrapModal&gt;</pre>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherStation/WeatherStationListForm.razor.cs
+using Microsoft.AspNetCore.Components;
+using CEC.Blazor.Components.BaseForms;
+using CEC.Weather.Data;
+using CEC.Weather.Services;
+using System.Threading.Tasks;
+
+namespace CEC.Weather.Components
+{
+    public partial class WeatherStationListForm : ListComponentBase&lt;DbWeatherStation, WeatherForecastDbContext&gt;
+    {
+        /// The Injected Controller service for this record
+        [Inject]
+        protected WeatherStationControllerService ControllerService { get; set; }
+
+
+        protected async override Task OnInitializedAsync()
+        {
+            this.UIOptions.MaxColumn = 2;
+            this.Service = this.ControllerService;
+            await base.OnInitializedAsync();
+        }
+
+        /// Method called when the user clicks on a row in the viewer.
+        protected void OnView(int id) =&gt; this.OnViewAsync&lt;WeatherStationViewerForm&gt;(id);
+
+        /// Method called when the user clicks on a row Edit button.
+        protected void OnEdit(int id) =&gt; this.OnEditAsync&lt;WeatherStationEditorForm&gt;(id);
+    }
+}</pre>
+
+<h3>Weather Report Forms</h3>
+
+<p>You can get these from the GitHub Repository. They are the same as the Station forms except in the editor where we have a select and a lookuplist for the Weather Stations. The section from the editor form looks like this.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherReport/WeatherReportEditorForm.razor
+&lt;UIFormRow&gt;
+    &lt;UILabelColumn Columns=&quot;4&quot;&gt;
+        Station:
+    &lt;/UILabelColumn&gt;
+    &lt;UIColumn Columns=&quot;4&quot;&gt;
+        &lt;InputControlSelect OptionList=&quot;this.StationLookupList&quot; @bind-Value=&quot;this.Service.Record.WeatherStationID&quot; RecordValue=&quot;@this.Service.ShadowRecord.WeatherStationID&quot;&gt;&lt;/InputControlSelect&gt;
+    &lt;/UIColumn&gt;
+&lt;/UIFormRow&gt;</pre>
+
+<p>The <code>StationLookupList</code> property is loaded in <code>OnParametersSetAsync</code> by making a call to the generic <code>GetLookUpListAsync&lt;IRecord&gt;()</code> method in the Controller Service. We specify the actual record type - in this case <code>DbWeatherStation</code> - and the method calls back into the relevant Data Service which does it&#39;s magic (<code>GetRecordLookupListAsync</code> in DBContextExtensions in <code>CEC.Blazor/Extensions</code>) and returns a <code>SortedDictionary</code> list containing the record <code>ID</code> and <code>DisplayName</code> properties.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Forms/WeatherReport/WeatherReportEditorForm.razor.cs
+
+    public partial class WeatherReportEditorForm : EditRecordComponentBase&lt;DbWeatherReport, WeatherForecastDbContext&gt;
+    {
+        .......
+        // Property to hold the Station Lookup List
+        public SortedDictionary&lt;int, string&gt; StationLookupList { get; set; }
+
+        .......
+        protected async override Task OnParametersSetAsync()
+        {
+            await base.OnParametersSetAsync();
+            // Method to get the Station Lookup List. Called here so whenever we do a UI refresh we get the list, we never know when it might be updated
+            StationLookupList = await this.Service.GetLookUpListAsync&lt;DbWeatherStation&gt;();
+        }
+    }</pre>
+
+<p>Filter loading is part of <code>OnParametersSetAsync</code> process in <code>ListComponentBase</code></p>
 
 <pre lang="c#">
 // CEC.Blazor/Components/BaseForms/ListComponentBase.cs
+
 protected async override Task OnParametersSetAsync()
 {
-    // base call
     await base.OnParametersSetAsync();
-    // Load the page - everything is reset so this will be new with the default filter
+    // Load the page - as we&#39;ve reset everything this will be the first page with the default filter
     if (this.IsService)
     {
         // Load the filters for the recordset
@@ -138,402 +954,555 @@ protected async override Task OnParametersSetAsync()
     this.Loading = false;
 }
 
-// base LoadFilter
+/// Method called to load the filter
 protected virtual void LoadFilter()
 {
-    // Set OnlyLoadIfFilter if the Parameter value is set
     if (IsService) this.Service.FilterList.OnlyLoadIfFilters = this.OnlyLoadIfFilter;
 }</pre>
 
-<p>We&#39;re interested in <code>ListComponentBase</code> calling <code>LoadPagingAsync()</code></p>
+<p><code>WeatherReportListForm</code> overrides <code>LoadFilter</code> to set up the record specific filters.</p>
 
 <pre lang="c#">
-// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
-
-/// Method to load up the Paged Data to display
-/// loads the delegate with the default service GetDataPage method and loads the first page
-/// Can be overridden for more complex situations
-public async virtual Task LoadPagingAsync(bool withDelegate = true)
+// CEC.Weather/Components/Forms/WeatherReport/WeatherReportListForm.razor.cs
+.....
+[Parameter]
+public int WeatherStationID { get; set; }
+.......
+/// inherited - loads the filter
+protected override void LoadFilter()
 {
-    // set the record to null to force a reload of the records
-    this.Records = null;
-    // if requested adds a default service function to the delegate
-    if (withDelegate) this.PageLoaderAsync = new IControllerPagingService&lt;TRecord&gt;.PageLoaderDelegateAsync(this.GetDataPageWithSortingAsync);
-    // loads the paging object
-    await this.LoadAsync();
-    // Trigger event so any listeners get notified
-    this.TriggerListChangedEvent(this);
-}</pre>
-
-<p><code>IControllerPagingService</code> defines a delegate <code>PageLoaderDelegateAsync</code> which returns a List of TRecords, and a delegate property <code>PageLoaderAsync</code>.</p>
-
-<pre lang="c#">
-// CEC.Blazor/Services/Interfaces/IControllerPagingService.cs
-
-// Delegate that returns a generic Record List
-public delegate Task&lt;List&lt;TRecord&gt;&gt; PageLoaderDelegateAsync();
-
-// Holds the reference to the PageLoader Method to use
-public PageLoaderDelegateAsync PageLoaderAsync { get; set; }</pre>
-
-<p>By default, <code>LoadPagingAsync</code> loads the method <code>GetDataPageWithSortingAsync</code> as <code>PageLoaderAsync</code>, and then calls <code>LoadAsync</code>.</p>
-
-<p><code>LoadAsync</code> resets various properties (We did this in <code>OnInitializedAsync</code> by resetting the service, but <code>LoadAsync</code> is called from elsewhere where we need to reset the record list - but not the whole service), and calls the <code>PageLoaderAsync</code> delegate.</p>
-
-<pre lang="c#">
-// CEC.Blazor/Services/BaseControllerService.cs
-public async Task&lt;bool&gt; LoadAsync()
-{
-    // Reset the page to 1
-    this.CurrentPage = 1;
-    // Check if we have a sort column, if not set to the default column
-    if (!string.IsNullOrEmpty(this.DefaultSortColumn)) this.SortColumn = this.DefaultSortColumn;
-    // Set the sort direction to the default
-    this.SortingDirection = DefaultSortingDirection;
-    // Check if we have a method loaded in the PageLoaderAsync delegate and if so run it
-    if (this.PageLoaderAsync != null) this.PagedRecords = await this.PageLoaderAsync();
-    // Set the block back to the start
-    this.ChangeBlock(0);
-    //  Force a UI update as everything has changed
-    this.PageHasChanged?.Invoke(this, this.CurrentPage);
-    return true;
-}</pre>
-
-<p><code>GetDataPageWithSortingAsync</code> is shown below. See the comments for detail. <code>GetFilteredListAsync</code> is always called to refresh the list recordset if necessary.</p>
-
-<pre lang="c#">
-// CEC.Blazor/Services/BaseControllerService.cs
-public async virtual Task&lt;List&lt;TRecord&gt;&gt; GetDataPageWithSortingAsync()
-{
-    // Get the filtered list - will only get a new list if the Records property has been set to null elsewhere
-    await this.GetFilteredListAsync();
-    // Reset the start record if we are outside the range of the record set - a belt and braces check as this shouldn&#39;t happen!
-    if (this.PageStartRecord &gt; this.Records.Count) this.CurrentPage = 1;
-    // Check if we have to apply sorting, in not get the page we want
-    if (string.IsNullOrEmpty(this.SortColumn)) return this.Records.Skip(this.PageStartRecord).Take(this._PageSize).ToList();
-    else
+    // Before the call to base so the filter is set before the get the list
+    if (this.IsService &amp;&amp;  this.WeatherStationID &gt; 0)
     {
-        //  If we do order the record set and then get the page we want
-        if (this.SortingDirection == SortDirection.Ascending)
+        this.Service.FilterList.Filters.Clear();
+        this.Service.FilterList.Filters.Add(&quot;WeatherStationID&quot;, this.WeatherStationID);
+    }
+    base.LoadFilter();
+}
+......</pre>
+
+<h3>Nav Menu</h3>
+
+<p>Add the menu link in <code>NavMenu</code>.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Controls/NavMenu.cs
+    .....
+    &lt;li class=&quot;nav-item px-3&quot;&gt;
+        &lt;NavLink class=&quot;nav-link&quot; href=&quot;weatherforecastmodal&quot;&gt;
+            &lt;span class=&quot;oi oi-cloud-upload&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt; Modal Weather
+        &lt;/NavLink&gt;
+    &lt;/li&gt;
+    &lt;li class=&quot;nav-item px-3&quot;&gt;
+        &lt;NavLink class=&quot;nav-link&quot; href=&quot;weatherstation&quot;&gt;
+            &lt;span class=&quot;oi oi-cloudy&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt; Weather Stations
+        &lt;/NavLink&gt;
+    &lt;/li&gt;
+    &lt;li class=&quot;nav-item px-3&quot;&gt;
+        &lt;NavLink class=&quot;nav-link&quot; href=&quot;weatherreport&quot;&gt;
+            &lt;span class=&quot;oi oi-cloudy&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt; Weather Reports
+        &lt;/NavLink&gt;
+    &lt;/li&gt;
+    &lt;li class=&quot;nav-item px-3&quot;&gt;
+        &lt;NavLink class=&quot;nav-link&quot; href=&quot;https://github.com/ShaunCurtis/CEC.Blazor&quot;&gt;
+            &lt;span class=&quot;oi oi-fork&quot; aria-hidden=&quot;true&quot;&gt;&lt;/span&gt; Github Repo
+        &lt;/NavLink&gt;
+    &lt;/li&gt;
+    ......</pre>
+
+<h3>Filter Control</h3>
+
+<p>To display WeatherReport data in a list we need to filter the data. Add a new control called <code>MonthYearIDListFilter</code>.</p>
+
+<pre lang="c#">
+// CEC.Weather/Components/Controls/MonthYearIDListFilter.razor.cs
+using CEC.Blazor.Data;
+using CEC.Weather.Data;
+using CEC.Weather.Services;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Threading.Tasks;
+
+namespace CEC.Weather.Components
+{
+    public partial class MonthYearIDListFilter : ComponentBase
+    {
+        // Inject the Controller Service
+        [Inject]
+        private WeatherReportControllerService Service { get; set; }
+
+        // Boolean to control the ID Control Display
+        [Parameter]
+        public bool ShowID { get; set; } = true;
+
+        // Month Lookup List
+        private SortedDictionary&lt;int, string&gt; MonthLookupList { get; set; }
+
+        // Year Lookup List
+        private SortedDictionary&lt;int, string&gt; YearLookupList { get; set; }
+
+        // Weather Station Lookup List
+        private SortedDictionary&lt;int, string&gt; IdLookupList { get; set; }
+
+        // Dummy Edit Context for selects
+        private EditContext EditContext =&gt; new EditContext(this.Service.Record);
+
+        // privates to hold current select values
+        private int OldMonth = 0;
+        private int OldYear = 0;
+        private long OldID = 0;
+
+        // Month value - adds or removes the value from the filter list and kicks off Filter changed if changed
+        private int Month
         {
-            return this.Records.OrderBy(x =&gt; x.GetType().GetProperty(this.SortColumn).GetValue(x, null)).Skip(this.PageStartRecord).Take(this._PageSize).ToList();
+            get =&gt; this.Service.FilterList.TryGetFilter(&quot;Month&quot;, out object value) ? (int)value : 0;
+            set
+            {
+                if (value &gt; 0) this.Service.FilterList.SetFilter(&quot;Month&quot;, value);
+                else this.Service.FilterList.ClearFilter(&quot;Month&quot;);
+                if (this.Month != this.OldMonth)
+                {
+                    this.OldMonth = this.Month;
+                    this.Service.TriggerFilterChangedEvent(this);
+                }
+            }
         }
-        else
+
+        // Year value - adds or removes the value from the filter list and kicks off Filter changed if changed
+        private int Year
         {
-            return this.Records.OrderByDescending(x =&gt; x.GetType().GetProperty(this.SortColumn).GetValue(x, null)).Skip(this.PageStartRecord).Take(this._PageSize).ToList();
+            get =&gt; this.Service.FilterList.TryGetFilter(&quot;Year&quot;, out object value) ? (int)value : 0;
+            set
+            {
+                if (value &gt; 0) this.Service.FilterList.SetFilter(&quot;Year&quot;, value);
+                else this.Service.FilterList.ClearFilter(&quot;Year&quot;);
+                if (this.Year != this.OldYear)
+                {
+                    this.OldYear = this.Year;
+                    this.Service.TriggerFilterChangedEvent(this);
+                }
+            }
+        }
+
+        // Weather Station value - adds or removes the value from the filter list and kicks off Filter changed if changed
+        private int ID
+        {
+            get =&gt; this.Service.FilterList.TryGetFilter(&quot;WeatherStationID&quot;, out object value) ? (int)value : 0;
+            set
+            {
+                if (value &gt; 0) this.Service.FilterList.SetFilter(&quot;WeatherStationID&quot;, value);
+                else this.Service.FilterList.ClearFilter(&quot;WeatherStationID&quot;);
+                if (this.ID != this.OldID)
+                {
+                    this.OldID = this.ID;
+                    this.Service.TriggerFilterChangedEvent(this);
+                }
+            }
+        }
+
+        protected override async Task OnInitializedAsync()
+        {
+            this.OldYear = this.Year;
+            this.OldMonth = this.Month;
+            await GetLookupsAsync();
+        }
+
+        // Method to get he LokkupLists
+        protected async Task GetLookupsAsync()
+        {
+            this.IdLookupList = await this.Service.GetLookUpListAsync&lt;DbWeatherStation&gt;(&quot;-- ALL STATIONS --&quot;);
+            // Get the months in the year
+            this.MonthLookupList = new SortedDictionary&lt;int, string&gt; { { 0, &quot;-- ALL MONTHS --&quot; } };
+            for (int i = 1; i &lt; 13; i++) this.MonthLookupList.Add(i, CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(i));
+            // Gets a distinct list of Years in the Weather Reports
+            {
+                var list = await this.Service.GetDistinctListAsync(new DbDistinctRequest() { FieldName = &quot;Year&quot;, QuerySetName = &quot;WeatherReport&quot;, DistinctSetName = &quot;DistinctList&quot; });
+                this.YearLookupList = new SortedDictionary&lt;int, string&gt; { { 0, &quot;-- ALL YEARS --&quot; } };
+                list.ForEach(item =&gt; this.YearLookupList.Add(int.Parse(item), item));
+            }
+
         }
     }
 }</pre>
 
-<p><code>GetFilteredListAsync</code> gets a filter list recordset. It&#39;s overridden in form components where filtering is applied - such as from a filter control. The default implementation gets the full recordset. It uses <code>IsRecords</code> to check if it needs to reload the recordset. It only reloads if <code>Records</code> is null.</p>
-
 <pre lang="c#">
-// CEC.Blazor/Services/BaseControllerService.cs
-public async virtual Task&lt;bool&gt; GetFilteredListAsync()
-{
-    // Check if the record set is null. and only refresh the record set if it&#39;s null
-    if (!this.IsRecords)
-    {
-        //gets the filtered record list
-        this.Records = await this.Service.GetFilteredRecordListAsync(FilterList);
-        return true;
-    }
-    return false;
-}</pre>
+// CEC.Weather/Components/Controls/MonthYearIDListFilter.razor
+@using CEC.Blazor.Components.FormControls
+@using Microsoft.AspNetCore.Components.Forms
 
-<p>To summarise:</p>
+@namespace CEC.Weather.Components
+@inherits ComponentBase
+
+&lt;EditForm EditContext=&quot;this.EditContext&quot;&gt;
+
+    &lt;table class=&quot;table&quot;&gt;
+        &lt;tr&gt;
+            @if (this.ShowID)
+            {
+                &lt;!--Weather Station--&gt;
+                &lt;td&gt;
+                    &lt;label class=&quot;&quot; for=&quot;ID&quot;&gt;Weather Station:&lt;/label&gt;
+                    &lt;div class=&quot;&quot;&gt;
+                        &lt;InputControlSelect OptionList=&quot;this.IdLookupList&quot; @bind-Value=&quot;this.ID&quot;&gt;&lt;/InputControlSelect&gt;
+                    &lt;/div&gt;
+                &lt;/td&gt;
+            }
+            &lt;td&gt;
+                &lt;!--Month--&gt;
+                &lt;label class=&quot;&quot;&gt;Month:&lt;/label&gt;
+                &lt;div class=&quot;&quot;&gt;
+                    &lt;InputControlSelect OptionList=&quot;this.MonthLookupList&quot; @bind-Value=&quot;this.Month&quot;&gt;&lt;/InputControlSelect&gt;
+                &lt;/div&gt;
+            &lt;/td&gt;
+            &lt;td&gt;
+                &lt;!--Year--&gt;
+                &lt;label class=&quot;&quot;&gt;Year:&lt;/label&gt;
+                &lt;div class=&quot;&quot;&gt;
+                    &lt;InputControlSelect OptionList=&quot;this.YearLookupList&quot; @bind-Value=&quot;this.Year&quot;&gt;&lt;/InputControlSelect&gt;
+                &lt;/div&gt;
+            &lt;/td&gt;
+        &lt;/tr&gt;
+    &lt;/table&gt;
+&lt;/EditForm&gt;</pre>
+
+<p>The filter displays a set of dropdowns. When you change a value, the value is added, updated or deleted from the filter list and the service FilterUpdated event is triggered. This sets off a set of events which triggers a ListForm UI Update. We&#39;ll look at this in more detail in the next article in this series in a section of the article - Component Updating with Events.</p>
+
+<h2>CEC.Blazor.Server</h2>
+
+<p>All the shared code is now complete and we need to move down to the actual projects.</p>
+
+<p>To set up the Server we need to:</p>
 
 <ol>
-	<li>On Form loading <code>Service</code> (the specific data service for the record type) gets reset.</li>
-	<li><code>GetDataPageWithSortingAsync()</code> on the <code>Service</code> gets loaded into the <code>Service</code> delegate</li>
-	<li>The Delegate gets called with <code>Records</code> in the <code>Service</code> set to null</li>
-	<li><code>GetFilteredListAsync()</code> loads <code>Records</code></li>
-	<li><code>GetDataPageWithSortingAsync()</code> loads the first page</li>
-	<li><code>IsLoading</code> is set to false so the <code>UIErrorHandler</code> UI control displays the page.</li>
-	<li>The Form is refreshed after <code>OnParametersSetAsync</code> automatically so no manual call to <code>StateHasChanged</code> is required. <code>OnInitializedAsync</code> is part of <code>OnParametersSetAsync</code> and only completes when <code>OnInitializedAsync</code> completes.</li>
+	<li>Configure the correct services - specific to the Server.</li>
+	<li>Build the Views for each record type - the views as the same for Server and WASM but nned to be deployed in each project.</li>
 </ol>
 
-<h4>Form Events</h4>
+<h3>Startup.cs</h3>
 
-<p>The <code>PagingControl</code> interfaces directly with the Form <code>Service</code> through the <code>IPagingControlService</code> interface, and links button clicks to <code>IPagingControlService</code> methods:</p>
+<p>We need to update Startup with the new services, by updating <code>AddApplicationServices</code> in <code>ServiceCollectionExtensions.cs</code>.</p>
+
+<p>Note <code>xxxxxxServerDataService</code> is added as a <code>IxxxxxxDataService</code>.</p>
+
+<pre lang="c#">
+// CEC.Blazor.Server/Extensions/ServiceCollectionExtensions.cs
+public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
+{
+    // Singleton service for the Server Side version of each Data Service 
+    services.AddSingleton&lt;IWeatherForecastDataService, WeatherForecastServerDataService&gt;();
+    services.AddSingleton&lt;IWeatherStationDataService, WeatherStationServerDataService&gt;();
+    services.AddSingleton&lt;IWeatherReportDataService, WeatherReportServerDataService&gt;();
+    // Scoped service for each Controller Service
+    services.AddScoped&lt;WeatherForecastControllerService&gt;();
+    services.AddScoped&lt;WeatherStationControllerService&gt;();
+    services.AddScoped&lt;WeatherReportControllerService&gt;();
+    // Transient service for the Fluent Validator for each record
+    services.AddTransient&lt;IValidator&lt;DbWeatherForecast&gt;, WeatherForecastValidator&gt;();
+    services.AddTransient&lt;IValidator&lt;DbWeatherStation&gt;, WeatherStationValidator&gt;();
+    services.AddTransient&lt;IValidator&lt;DbWeatherReport&gt;, WeatherReportValidator&gt;();
+    // Factory for building the DBContext 
+    var dbContext = configuration.GetValue&lt;string&gt;(&quot;Configuration:DBContext&quot;);
+    services.AddDbContextFactory&lt;WeatherForecastDbContext&gt;(options =&gt; options.UseSqlServer(dbContext), ServiceLifetime.Singleton);
+    return services;
+}</pre>
+
+<h3>Weather Station Routes/Views</h3>
+
+<p>These are almost trivial. All the code and markup is in the forms. We just declare the route and add the form to the View.</p>
+
+<pre lang="c#">
+// CEC.Blazor.Server/Routes/WeatherStation/WeatherStationEditorView.razor
+@page &quot;/WeatherStation/New&quot;
+@page &quot;/WeatherStation/Edit&quot;
+
+@inherits ApplicationComponentBase
+@namespace CEC.Blazor.Server.Routes
+
+&lt;WeatherStationEditorForm&gt;&lt;/WeatherStationEditorForm&gt;</pre>
+
+<pre lang="c#">
+// CEC.Blazor.Server/Routes/WeatherStation/WeatherStationListView.razor
+@page &quot;/WeatherStation&quot;
+@namespace CEC.Blazor.Server.Routes
+@inherits ApplicationComponentBase
+
+&lt;WeatherStationListForm UIOptions=&quot;this.UIOptions&quot; &gt;&lt;/WeatherStationListForm&gt;
+
+@code {
+    public UIOptions UIOptions =&gt; new UIOptions()
+    {
+        ListNavigationToViewer = true,
+        ShowButtons = true,
+        ShowAdd = true,
+        ShowEdit = true
+    };
+}</pre>
+
+<p>The view for WeatherStation is a little more complicated. We add the View Form for WeatherStation and the List Form for WeatherReports, and pass the WeatherReport list form the WeatherStation ID.</p>
+
+<pre lang="c#">
+@page &quot;/WeatherStation/View&quot;
+@namespace CEC.Blazor.Server.Routes
+@inherits ApplicationComponentBase
+
+&lt;WeatherStationViewerForm&gt;&lt;/WeatherStationViewerForm&gt;
+&lt;UIBootstrapBase Css=&quot;mt-2&quot;&gt;
+    &lt;WeatherReportListForm WeatherStationID=&quot;this._ID&quot; OnlyLoadIfFilter=&quot;true&quot;&gt;&lt;/WeatherReportListForm&gt;
+&lt;/UIBootstrapBase&gt;</pre>
+
+<pre lang="c#">
+// CEC.Blazor.Server/Routes/WeatherReport/WeatherReportEditorView.razor
+@page &quot;/WeatherReport/New&quot;
+@page &quot;/WeatherReport/Edit&quot;
+
+@inherits ApplicationComponentBase
+
+@namespace CEC.Blazor.Server.Routes
+
+&lt;WeatherReportEditorForm&gt;&lt;/WeatherReportEditorForm&gt;</pre>
+
+<p><code>WeatherReportListView</code> uses the <code>MonthYearIdListFilter</code> to control the Weather Report List. Note <code>OnlyLoadIfFilter</code> is set to true to prevent the full recordset being displayed when no filter is set.</p>
+
+<pre lang="c#">
+// CEC.Blazor.Server/Routes/WeatherReport/WeatherReportListView.razor
+@page &quot;/WeatherReport&quot;
+
+@namespace CEC.Blazor.Server.Routes
+@inherits ApplicationComponentBase
+
+&lt;MonthYearIDListFilter&gt;&lt;/MonthYearIDListFilter&gt;
+&lt;WeatherReportListForm OnlyLoadIfFilter=&quot;true&quot; UIOptions=&quot;this.UIOptions&quot;&gt;&lt;/WeatherReportListForm&gt;
+
+@code {
+    public UIOptions UIOptions =&gt; new UIOptions()
+    {
+        ListNavigationToViewer = true,
+        ShowButtons = true,
+        ShowAdd = true,
+        ShowEdit = true
+    };
+}</pre>
+
+<pre lang="c#">
+// CEC.Blazor.Server/Routes/WeatherReport/WeatherReportViewerView.razor
+@page &quot;/WeatherReport/View&quot;
+
+@namespace CEC.Blazor.Server.Routes
+@inherits ApplicationComponentBase
+
+&lt;WeatherReportViewerForm&gt;&lt;/WeatherReportViewerForm&gt;</pre>
+
+<h2>CEC.Blazor.WASM.Client</h2>
+
+<p>To set up the client we need to:</p>
 
 <ol>
-	<li><code>ChangeBlockAsync(int direction,bool supresspageupdate)</code></li>
-	<li><code>MoveOnePageAsync(int direction)</code></li>
-	<li><code>GoToPageAsync(int pageno)</code></li>
+	<li>Configure the correct services - specific to the Client.</li>
+	<li>Build the Views for each record type - same as Server.</li>
 </ol>
 
-<pre lang="c#">
-// CEC.Blazor/Services/BaseControllerService.cs
+<h3>program.cs</h3>
 
-/// Moves forward or backwards one block
-/// direction 1 for forwards
-/// direction -1 for backwards
-/// suppresspageupdate 
-///  - set to true (default) when user changes page and the block changes with the page
-///  - set to false when user changes block rather than changing page and the page needs to be updated to the first page of the block
-public async Task ChangeBlockAsync(int direction, bool suppresspageupdate = true)
+<p>We need to update program with the new services by updating <code>AddApplicationServices</code> in <code>ServiceCollectionExtensions.cs</code>.</p>
+
+<p><code>xxxxxxWASMDataService</code> is added as the <code>IxxxxxxDataService</code>.</p>
+
+<pre lang="c#">
+// CEC.Blazor.WASM/Client/Extensions/ServiceCollectionExtensions.cs
+public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
 {
-    if (direction == 1 &amp;&amp; this.EndPage &lt; this.TotalPages)
-    {
-        this.StartPage = this.EndPage + 1;
-        if (this.EndPage + this.PagingBlockSize &lt; this.TotalPages) this.EndPage = this.StartPage + this.PagingBlockSize - 1;
-        else this.EndPage = this.TotalPages;
-        if (!suppresspageupdate) this.CurrentPage = this.StartPage;
-    }
-    else if (direction == -1 &amp;&amp; this.StartPage &gt; 1)
-    {
-        this.EndPage = this.StartPage - 1;
-        this.StartPage = this.StartPage - this.PagingBlockSize;
-        if (!suppresspageupdate) this.CurrentPage = this.StartPage;
-    }
-    else if (direction == 0 &amp;&amp; this.CurrentPage == 1)
-    {
-        this.StartPage = 1;
-        if (this.EndPage + this.PagingBlockSize &lt; this.TotalPages) this.EndPage = this.StartPage + this.PagingBlockSize - 1;
-        else this.EndPage = this.TotalPages;
-    }
-    if (!suppresspageupdate) await this.PaginateAsync();
+    // Scoped service for the WASM Client version of Data Services 
+    services.AddScoped&lt;IWeatherForecastDataService, WeatherForecastWASMDataService&gt;();
+    services.AddScoped&lt;IWeatherStationDataService, WeatherStationWASMDataService&gt;();
+    services.AddScoped&lt;IWeatherReportDataService, WeatherReportWASMDataService&gt;();
+    // Scoped service for the Controller Services
+    services.AddScoped&lt;WeatherForecastControllerService&gt;();
+    services.AddScoped&lt;WeatherStationControllerService&gt;();
+    services.AddScoped&lt;WeatherReportControllerService&gt;();
+    // Transient service for the Fluent Validator for the records
+    services.AddTransient&lt;IValidator&lt;DbWeatherForecast&gt;, WeatherForecastValidator&gt;();
+    services.AddTransient&lt;IValidator&lt;DbWeatherStation&gt;, WeatherStationValidator&gt;();
+    services.AddTransient&lt;IValidator&lt;DbWeatherReport&gt;, WeatherReportValidator&gt;();
+    return services;
 }</pre>
 
+<h3>Weather Station Routes/Views</h3>
+
+<p>These are exactly the same as Server. So I won&#39;t repeat them here.</p>
+
+<p>That&#39;s it. The Client is configured.</p>
+
+<h2>CEC.Blazor.WASM.Server</h2>
+
+<p>The WASM Server is the API provider. We need to:</p>
+
+<ol>
+	<li>Configure the correct services.</li>
+	<li>Build controllers for each record type.</li>
+</ol>
+
+<h3>Startup.cs</h3>
+
+<p>We need to update Startup with the new services by updating <code>AddApplicationServices</code> in <code>ServiceCollectionExtensions.cs</code>.</p>
+
+<p><code>xxxxxxServerDataService</code> is added as the <code>IxxxxxxDataService</code>.</p>
+
 <pre lang="c#">
-/// Moves forward or backwards one page
-/// direction 1 for forwards
-/// direction -1 for backwards
-public async Task MoveOnePageAsync(int direction)
+// CEC.Blazor.WASM.Server/Extensions/ServiceCollectionExtensions.cs
+public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
 {
-    if (direction == 1)
+    // Singleton service for the Server Side version of each Data Service 
+    services.AddSingleton&lt;IWeatherForecastDataService, WeatherForecastServerDataService&gt;();
+    services.AddSingleton&lt;IWeatherStationDataService, WeatherStationServerDataService&gt;();
+    services.AddSingleton&lt;IWeatherReportDataService, WeatherReportServerDataService&gt;();
+    // Factory for building the DBContext 
+    var dbContext = configuration.GetValue&lt;string&gt;(&quot;Configuration:DBContext&quot;);
+    services.AddDbContextFactory&lt;WeatherForecastDbContext&gt;(options =&gt; options.UseSqlServer(dbContext), ServiceLifetime.Singleton);
+    return services;
+}</pre>
+
+<h3>Weather Station Controllers</h3>
+
+<p>The controllers act as gateways to the data controllers for each service. They are self explanatory. <code>HttpgGet</code> is used where we are just making a data request, and <code>HttpPost</code> where data is posted into the API. The controller for each record type has the same patterns - building new ones is a copy and replace exercise.</p>
+
+<pre lang="c#">
+// CEC.Blazor.WASM.Server/Controllers/WeatherStationController.cs
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using MVC = Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using CEC.Weather.Services;
+using CEC.Weather.Data;
+using CEC.Blazor.Data;
+using CEC.Blazor.Components;
+
+namespace CEC.Blazor.WASM.Server.Controllers
+{
+    [ApiController]
+    public class WeatherStationController : ControllerBase
     {
-        if (this.CurrentPage &lt; this.TotalPages)
+        protected IWeatherStationDataService DataService { get; set; }
+
+        private readonly ILogger&lt;WeatherStationController&gt; logger;
+
+        public WeatherStationController(ILogger&lt;WeatherStationController&gt; logger, IWeatherStationDataService dataService)
         {
-            if (this.CurrentPage == this.EndPage) await ChangeBlockAsync(1);
-            this.CurrentPage += 1;
+            this.DataService = dataService;
+            this.logger = logger;
         }
+
+        [MVC.Route(&quot;weatherstation/list&quot;)]
+        [HttpGet]
+        public async Task&lt;List&lt;DbWeatherStation&gt;&gt; GetList() =&gt; await DataService.GetRecordListAsync();
+
+        [MVC.Route(&quot;weatherStation/filteredlist&quot;)]
+        [HttpPost]
+        public async Task&lt;List&lt;DbWeatherStation&gt;&gt; GetFilteredRecordListAsync([FromBody] FilterList filterList) =&gt; await DataService.GetFilteredRecordListAsync(filterList);
+
+        [MVC.Route(&quot;weatherstation/base&quot;)]
+        public async Task&lt;List&lt;DbBaseRecord&gt;&gt; GetBaseAsync() =&gt; await DataService.GetBaseRecordListAsync&lt;DbWeatherStation&gt;();
+
+        [MVC.Route(&quot;weatherstation/count&quot;)]
+        [HttpGet]
+        public async Task&lt;int&gt; Count() =&gt; await DataService.GetRecordListCountAsync();
+
+        [MVC.Route(&quot;weatherstation/get&quot;)]
+        [HttpGet]
+        public async Task&lt;DbWeatherStation&gt; GetRec(int id) =&gt; await DataService.GetRecordAsync(id);
+
+        [MVC.Route(&quot;weatherstation/read&quot;)]
+        [HttpPost]
+        public async Task&lt;DbWeatherStation&gt; Read([FromBody]int id) =&gt; await DataService.GetRecordAsync(id);
+
+        [MVC.Route(&quot;weatherstation/update&quot;)]
+        [HttpPost]
+        public async Task&lt;DbTaskResult&gt; Update([FromBody]DbWeatherStation record) =&gt; await DataService.UpdateRecordAsync(record);
+
+        [MVC.Route(&quot;weatherstation/create&quot;)]
+        [HttpPost]
+        public async Task&lt;DbTaskResult&gt; Create([FromBody]DbWeatherStation record) =&gt; await DataService.CreateRecordAsync(record);
+
+        [MVC.Route(&quot;weatherstation/delete&quot;)]
+        [HttpPost]
+        public async Task&lt;DbTaskResult&gt; Delete([FromBody] DbWeatherStation record) =&gt; await DataService.DeleteRecordAsync(record);
     }
-    else if (direction == -1)
+}</pre>
+
+<pre lang="c#">
+// CEC.Blazor.WASM.Server/Controllers/WeatherReportController.cs
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using MVC = Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using CEC.Weather.Services;
+using CEC.Weather.Data;
+using CEC.Blazor.Data;
+using CEC.Blazor.Components;
+
+namespace CEC.Blazor.WASM.Server.Controllers
+{
+    [ApiController]
+    public class WeatherReportController : ControllerBase
     {
-        if (this.CurrentPage &gt; 1)
+        protected IWeatherReportDataService DataService { get; set; }
+
+        private readonly ILogger&lt;WeatherReportController&gt; logger;
+
+        public WeatherReportController(ILogger&lt;WeatherReportController&gt; logger, IWeatherReportDataService dataService)
         {
-            if (this.CurrentPage == this.StartPage) await ChangeBlockAsync(-1);
-            this.CurrentPage -= 1;
+            this.DataService = dataService;
+            this.logger = logger;
         }
+
+        [MVC.Route(&quot;weatherreport/list&quot;)]
+        [HttpGet]
+        public async Task&lt;List&lt;DbWeatherReport&gt;&gt; GetList() =&gt; await DataService.GetRecordListAsync();
+
+        [MVC.Route(&quot;weatherreport/filteredlist&quot;)]
+        [HttpPost]
+        public async Task&lt;List&lt;DbWeatherReport&gt;&gt; GetFilteredRecordListAsync([FromBody] FilterList filterList) =&gt; await DataService.GetFilteredRecordListAsync(filterList);
+
+        [MVC.Route(&quot;weatherreport/distinctlist&quot;)]
+        [HttpPost]
+        public async Task&lt;List&lt;string&gt;&gt; GetDistinctListAsync([FromBody] DbDistinctRequest req) =&gt; await DataService.GetDistinctListAsync(req);
+
+        [MVC.Route(&quot;weatherreport/base&quot;)]
+        public async Task&lt;List&lt;DbBaseRecord&gt;&gt; GetBaseAsync() =&gt; await DataService.GetBaseRecordListAsync&lt;DbWeatherReport&gt;();
+
+        [MVC.Route(&quot;weatherreport/count&quot;)]
+        [HttpGet]
+        public async Task&lt;int&gt; Count() =&gt; await DataService.GetRecordListCountAsync();
+
+        [MVC.Route(&quot;weatherreport/get&quot;)]
+        [HttpGet]
+        public async Task&lt;DbWeatherReport&gt; GetRec(int id) =&gt; await DataService.GetRecordAsync(id);
+
+        [MVC.Route(&quot;weatherreport/read&quot;)]
+        [HttpPost]
+        public async Task&lt;DbWeatherReport&gt; Read([FromBody]int id) =&gt; await DataService.GetRecordAsync(id);
+
+        [MVC.Route(&quot;weatherreport/update&quot;)]
+        [HttpPost]
+        public async Task&lt;DbTaskResult&gt; Update([FromBody]DbWeatherReport record) =&gt; await DataService.UpdateRecordAsync(record);
+
+        [MVC.Route(&quot;weatherreport/create&quot;)]
+        [HttpPost]
+        public async Task&lt;DbTaskResult&gt; Create([FromBody]DbWeatherReport record) =&gt; await DataService.CreateRecordAsync(record);
+
+        [MVC.Route(&quot;weatherreport/delete&quot;)]
+        [HttpPost]
+        public async Task&lt;DbTaskResult&gt; Delete([FromBody] DbWeatherReport record) =&gt; await DataService.DeleteRecordAsync(record);
     }
-    await this.PaginateAsync();
 }</pre>
-
-<pre lang="c#">
-/// Moves to the specified page
-public Async Task GoToPageAsync(int pageno)
-{
-    this.CurrentPage = pageno;
-    await this.PaginateAsync();
-}</pre>
-
-<p>All the above methods set up the <code>IPagingControlService</code> properties and then call <code>PaginateAsync()</code> which calls the PageLoaderAsync delegate and forces a UI update.</p>
-
-<pre lang="c#">
-// CEC.Blazor/Services/BaseControllerService.cs
-
-/// Method to trigger the page Changed Event
-public async Task PaginateAsync()
-{
-    // Check if we have a method loaded in the PageLoaderAsync delegate and if so run it
-    if (this.PageLoaderAsync != null) this.PagedRecords = await this.PageLoaderAsync();
-    //  Force a UI update as something has changed
-    this.PageHasChanged?.Invoke(this, this.CurrentPage);
-}</pre>
-
-<h4>PageControl</h4>
-
-<p>The <code>PageControl</code> code is shown below and documented with comments.</p>
-
-<pre lang="c#">
-// CEC.Blazor/Components/FormControls/PagingControl.razor
-
-@if (this.IsPagination)
-{
-    &lt;div class=&quot;pagination ml-2 flex-nowrap&quot;&gt;
-        &lt;nav aria-label=&quot;Page navigation&quot;&gt;
-            &lt;ul class=&quot;pagination mb-1&quot;&gt;
-                @if (this.DisplayType != PagingDisplayType.Narrow)
-                {
-                    @if (this.DisplayType == PagingDisplayType.FullwithoutPageSize)
-                    {
-                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(-1, false))&quot;&gt;1&amp;laquo;&lt;/button&gt;&lt;/li&gt;
-                    }
-                    else
-                    {
-                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(-1, false))&quot;&gt;&amp;laquo;&lt;/button&gt;&lt;/li&gt;
-                    }
-                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(-1))&quot;&gt;Previous&lt;/button&gt;&lt;/li&gt;
-                    @for (int i = this.Paging.StartPage; i &lt;= this.Paging.EndPage; i++)
-                    {
-                        var currentpage = i;
-                        &lt;li class=&quot;page-item @(currentpage == this.Paging.CurrentPage ? &quot;active&quot; : &quot;&quot;)&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.GoToPageAsync(currentpage))&quot;&gt;@currentpage&lt;/button&gt;&lt;/li&gt;
-                    }
-                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(1))&quot;&gt;Next&lt;/button&gt;&lt;/li&gt;
-                    @if (this.DisplayType == PagingDisplayType.FullwithoutPageSize)
-                    {
-                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(1, false))&quot;&gt;&amp;raquo;@this.Paging.TotalPages&lt;/button&gt;&lt;/li&gt;
-                    }
-                    else
-                    {
-                        &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.ChangeBlockAsync(1, false))&quot;&gt;&amp;raquo;&lt;/button&gt;&lt;/li&gt;
-                    }
-                }
-                else
-                {
-                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(-1))&quot;&gt;1&amp;laquo;&lt;/button&gt;&lt;/li&gt;
-                    @for (int i = this.Paging.StartPage; i &lt;= this.Paging.EndPage; i++)
-                    {
-                        var currentpage = i;
-                        &lt;li class=&quot;page-item @(currentpage == this.Paging.CurrentPage ? &quot;active&quot; : &quot;&quot;)&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.GoToPageAsync(currentpage))&quot;&gt;@currentpage&lt;/button&gt;&lt;/li&gt;
-                    }
-                    &lt;li class=&quot;page-item&quot;&gt;&lt;button class=&quot;page-link&quot; @onclick=&quot;(e =&gt; this.Paging.MoveOnePageAsync(1))&quot;&gt;&amp;raquo;@this.Paging.TotalPages&lt;/button&gt;&lt;/li&gt;
-                }
-            &lt;/ul&gt;
-        &lt;/nav&gt;
-        @if (this.DisplayType == PagingDisplayType.Full)
-        {
-            &lt;span class=&quot;pagebutton btn btn-link btn-sm disabled mr-1&quot;&gt;Page @this.Paging.CurrentPage of @this.Paging.TotalPages&lt;/span&gt;
-        }
-    &lt;/div&gt;
-}</pre>
-
-<pre lang="c#">
-// CEC.Blazor/Components/FormControls/PagingControl.razor.cs
-
-public partial class PagingControl&lt;TRecord&gt; : ComponentBase where TRecord : IDbRecord&lt;TRecord&gt;, new()
-{
-    [CascadingParameter]
-    public IControllerPagingService&lt;TRecord&gt; _Paging { get; set; }
-
-    [Parameter]
-    public IControllerPagingService&lt;TRecord&gt; Paging { get; set; }
-
-    [Parameter]
-    public PagingDisplayType DisplayType { get; set; } = PagingDisplayType.Full;
-
-    [Parameter]
-    public int BlockSize { get; set; } = 0;
-
-    private bool IsPaging =&gt; this.Paging != null;
-
-    private bool IsPagination =&gt; this.Paging != null &amp;&amp; this.Paging.IsPagination;
-
-    protected override void OnInitialized()
-    {
-        // Check if we have a cascaded IControllerPagingService if so use it
-        this.Paging = this._Paging?? this.Paging;
-        base.OnInitialized();
-    }
-    protected override Task OnParametersSetAsync()
-    {
-        if (this.IsPaging)
-        {
-            this.Paging.PageHasChanged += this.UpdateUI;
-            if (this.DisplayType == PagingDisplayType.Narrow) Paging.PagingBlockSize = 4;
-            if (BlockSize &gt; 0) Paging.PagingBlockSize = this.BlockSize;
-        }
-        return base.OnParametersSetAsync();
-    }
-
-    protected void UpdateUI(object sender, int recordno) =&gt; InvokeAsync(StateHasChanged);
-
-    private string IsCurrent(int i) =&gt; i == this.Paging.CurrentPage ? &quot;active&quot; : string.Empty;
-}</pre>
-
-<pre lang="c#">
-
-&nbsp;</pre>
-
-<h4>WeatherForecastListForm</h4>
-
-<p>The Code for the <code>WeatherForecastListForm</code> is fairly self explanatory. <code>OnView</code> and <code>OnEdit</code> either route to the Viewer or Editor, or open the dialogs if <code>UIOptions</code> specifies Use Modals.</p>
-
-<pre lang="c#">
-// CEC.Weather/Components/Forms/WeatherForecastListForm.razor.cs
-
-public partial class WeatherForecastListForm : ListComponentBase&lt;DbWeatherForecast, WeatherForecastDbContext&gt;
-{
-    /// The Injected Controller service for this record
-    [Inject]
-    protected WeatherForecastControllerService ControllerService { get; set; }
-
-    protected async override Task OnInitializedAsync()
-    {
-        // Sets the specific service
-        this.Service = this.ControllerService;
-        // Sets the max column that is cascaded into the UI Controls
-        this.UIOptions.MaxColumn = 3;
-        await base.OnInitializedAsync();
-    }
-
-    /// Method called when the user clicks on a row in the viewer.
-    protected void OnView(int id) =&gt; this.OnViewAsync&lt;WeatherForecastViewerForm&gt;(id);
-
-    /// Method called when the user clicks on a row Edit button.
-    protected void OnEdit(int id) =&gt; this.OnEditAsync&lt;WeatherForecastEditorForm&gt;(id);
-
-}</pre>
-
-<p>The Razor Markup below is an abbreviated version of the full file. This makes extensive use of UIControls which were covered in the previous article. See the comments for detail.</p>
-
-<pre lang="c#">
-// CEC.Weather/Components/Forms/WeatherForecastListForm.razor
-
-// Wrapper that cascades the values including event handlers
-&lt;UIWrapper UIOptions=&quot;@this.UIOptions&quot; RecordConfiguration=&quot;@this.Service.RecordConfiguration&quot; OnView=&quot;@OnView&quot; OnEdit=&quot;@OnEdit&quot;&gt;
-
-    // UI CardGrid is a Bootstrap Card
-    &lt;UICardGrid TRecord=&quot;DbWeatherForecast&quot; IsCollapsible=&quot;true&quot; Paging=&quot;this.Paging&quot; IsLoading=&quot;this.Loading&quot;&gt;
-
-        &lt;Title&gt;
-            @this.ListTitle
-        &lt;/Title&gt;
-
-        // Header Section of UICardGrid
-        &lt;TableHeader&gt;
-            // Header Grid columns
-            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;1&quot; FieldName=&quot;WeatherForecastID&quot;&gt;ID&lt;/UIGridTableHeaderColumn&gt;
-            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;2&quot; FieldName=&quot;Date&quot;&gt;Date&lt;/UIGridTableHeaderColumn&gt;
-            .....
-            &lt;UIGridTableHeaderColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;7&quot;&gt;&lt;/UIGridTableHeaderColumn&gt;
-        &lt;/TableHeader&gt;
-
-        // Row Template Section of UICardGrid
-        &lt;RowTemplate&gt;
-            // Cascaded ID for the specific Row
-            &lt;CascadingValue Name=&quot;RecordID&quot; Value=&quot;@context.WeatherForecastID&quot;&gt;
-                &lt;UIGridTableColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;1&quot;&gt;@context.WeatherForecastID&lt;/UIGridTableColumn&gt;
-                &lt;UIGridTableColumn TRecord=&quot;DbWeatherForecast&quot; Column=&quot;2&quot;&gt;@context.Date.ToShortDateString()&lt;/UIGridTableColumn&gt;
-                .....
-                &lt;UIGridTableEditColumn TRecord=&quot;DbWeatherForecast&quot;&gt;&lt;/UIGridTableEditColumn&gt;
-            &lt;/CascadingValue&gt;
-
-        &lt;/RowTemplate&gt;
-        // Navigation Section of UUCardGrid
-        &lt;Navigation&gt;
-
-            &lt;UIListButtonRow&gt;
-                // Paging part of UIListButtonRow
-                &lt;Paging&gt;
-                    &lt;PagingControl TRecord=&quot;DbWeatherForecast&quot; Paging=&quot;this.Paging&quot;&gt;&lt;/PagingControl&gt;
-                &lt;/Paging&gt;
-            &lt;/UIListButtonRow&gt;
-
-        &lt;/Navigation&gt;
-    &lt;/UICardGrid&gt;
-&lt;/UIWrapper&gt;</pre>
-
-<p>The Razor component uses a set of UIControls designed for list building. <code>UICardGrid</code> builds the Bootstrap Card and the table framework. You can explore the components code in the Github Repository - <a href="https://github.com/ShaunCurtis/CEC.Blazor/tree/master/CEC.Blazor/Components/UIControls/UIGridTable">CEC.Blazor/Components/UIControls/UIGridTable</a>.</p>
 
 <h3>Wrap Up</h3>
 
-<p>That wraps up this article. Some key points to note:</p>
+<p>I hope this article demonstrates how to use the CEC.Blazor library code to build out data services and UI components.  While a little time consuming it's relatively straightforward once you understand the process.</p>
 
-<ol>
-	<li>The differences in code between a Blazor Server and a Blazor WASM project are very minor.</li>
-	<li>Almost all functionality is implemented in the library components. Most of the application code is Razor markup for the individual record fields.</li>
-	<li>Async functionality is used throughout the components and CRUD data access.</li>
-</ol>
+<p>In the final article we&#39;ll look at some key concepts implemented in the application that we haven't yet covered and finish off with deployment.</p>

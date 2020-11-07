@@ -1,8 +1,8 @@
 # A Deep Dive into Blazor Components
 
-The Blazor UI is build from components.  In this article we'll look at the anatomy of a component, the component life cycle and how Blazor uses and manages components to run the UI. 
+The Blazor UI is build from components organised in a component tree.  In this article we'll look at the anatomy of a component, it's life cycle and how Blazor manages the component tree. 
 
-To understand where components fit in, let's look at how a Blazor Application functions.
+Before diving into components, we need to understand where they fit in to the Blazor framework.
 
 A Blazor Server Application has three contexts:
 
@@ -21,9 +21,9 @@ Again so there's no misunderstanding, two browser windows or tabs open on the sa
 
 ### Blazor Server
 
-A Blazor Client Application starts with an HTTP request to a Blazor configured DotNet Core Server Application running on a web server.
+A Blazor Client Application is initialised with an HTTP request to a Blazor configured DotNet Core Server Application running on a web server.
 
-1. If static pages is configured, the server first checks if a static file exists.  If one does, it servers it - no client application involved, just standard HTTP operations.  This is how requests for CSS, JS and other resource files are handled.
+1. If use static pages is configured, the server first checks if a static file exists.  If one does, it servers it - no client application involved, just standard HTTP operations.  This is how requests for CSS, JS and other resource files are handled.
 2. If no static page exists, it assumes it's a Blazor page. The Server Application builds the initial page from *_Host.chtml*.  This is a standard HTML page, with stylesheet and script references and a single *\<app\>* component.
 
 #### _Host.chtml
