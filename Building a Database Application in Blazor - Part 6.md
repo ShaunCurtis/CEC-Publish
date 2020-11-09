@@ -1,5 +1,5 @@
 # Building a Database Appication in Blazor 
-# Part 6 - Adding new Record Types and Thier UI to Weather Projects
+# Part 6 - Adding new Record Types and Their UI to the Weather Application
 
 This is the sixth article in the series and walks through adding new records to the Weather Application.  The articles so far are:
 
@@ -8,17 +8,17 @@ This is the sixth article in the series and walks through adding new records to 
 2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
 3. [View Components - CRUD Edit and View Operations in the UI](https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C)
 4. [UI Components - Building HTML/CSS Controls](https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U)
-5. View Components - CRUD List Operations in the UI
+5. [View Components - CRUD List Operations in the UI](https://www.codeproject.com/Articles/5280391/Building-a-Database-Application-in-Blazor-Part-5-V)
 6. Adding vNew Record Types and the UI to Weather Projects
 
- We'll import station data from the UK Met Office.  There's an command line importer project included in the solution to fetch and import the data.  The data is monthly records from British Weather Stations going back to 1928.  We'll add two record types:
+The purpose of the exercise is to import station data from the UK Met Office.  There's an command line importer project included in the solution to fetch and import the data - review the code to see how it works.  The data is in the form of monthly records from British Weather Stations going back to 1928.  We'll add two record types:
 
-* Weather Stations
-* Weather Reports from Stations
+* Weather Station
+* Weather Report from Stations
 
 And all the infrastructure to provide UI CRUD operations for these two records.
 
-We will build both Server and WASM deployments, so we have 4 projects where we will be adding code:
+As we're building both Server and WASM deployments, we have 4 projects to which we add code:
 1. **CEC.Weather** - the shared project library
 2. **CEC.Blazor.Server** - the Server Project
 3. **CEC.Blazor.WASM.Client** - the WASM project
@@ -42,6 +42,7 @@ The completed code for this article is in [CEC.Weather GitHub Repository](https:
 ## Database
 
 Add tables for each record type to the database.
+
 ```sql
 CREATE TABLE [dbo].[WeatherStation](
 	[WeatherStationID] [int] IDENTITY(1,1) NOT NULL,
@@ -216,77 +217,19 @@ WHERE @ID  = WeatherReportID
 END
 ```
 
+All the SQL, including two weather station datasets, is available as a set of files in the SQL folder of the GitHub Repository.
+
 ## CEC.Weather Library
 
 We need to:
-1. Add some utility classes specific to the project.  In this instance we:
-    * Add some extensions to display our fields correctly (Latitude and Longitude).
+1. Add the model classes for each record type.
+2. Add some utility classes specific to the project.  In this instance we:
+    * Add some extensions to *decimal* to display our fields correctly (Latitude and Longitude).
     * Add custom validators for the editors for each record type.
-2. Add the model classes for each record type.
-3. Update the WeatherForecastDBContext with the new record types.
-4. Build the Controller and Data Services for each data type.
-5. Build the List/Edit/View Forms for each record type.
+3. Update the WeatherForecastDBContext to handle the new record types.
+4. Build specific Controller and Data Services to handle each record type.
+5. Build specific List/Edit/View Forms for each record type.
 6. Update the NavMenu component.
-
-### Add Some Utility Classes
-
-I'm a great believer in making life a little easier.  Extension methods are great for this. We're dealing with longitudes and Latitudes as decimals, so I add some decimal extension methods to diplay them correctly in the UI.
-
-```c#
-// CEC.Weather/Extensions/DecimalExtensions.cs
-public static class DecimalExtensions
-{
-    public static string AsLatitude(this decimal value)  => value > 0 ? $"{value}N" : $"{Math.Abs(value)}S";
-
-    public static string AsLongitude(this decimal value) => value > 0 ? $"{value}E" : $"{Math.Abs(value)}W";
-}
-```
-I use Blazor Fluent Validation for the Editors.  It's a lot more flexible that the built in validation.
-
-```c#
-// CEC.Weather/Data/Validators/WeatherStationValidator.cs
-using FluentValidation;
-
-namespace CEC.Weather.Data.Validators
-{
-    public class WeatherStationValidator : AbstractValidator<DbWeatherStation>
-    {
-        public WeatherStationValidator()
-        {
-            RuleFor(p => p.Longitude).LessThan(-180).WithMessage("Longitude must be -180 or greater");
-            RuleFor(p => p.Longitude).GreaterThan(180).WithMessage("Longitude must be 180 or less");
-            RuleFor(p => p.Latitude).LessThan(-90).WithMessage("Latitude must be -90 or greater");
-            RuleFor(p => p.Latitude).GreaterThan(90).WithMessage("Latitude must be 90 or less");
-            RuleFor(p => p.Name).MinimumLength(1).WithMessage("Your need a Station Name!");
-        }
-    }
-}
-```
-
-```c#
-// CEC.Weather/Data/Validators/WeatherReportValidator.cs
-using FluentValidation;
-
-namespace CEC.Weather.Data.Validators
-{
-    public class WeatherReportValidator : AbstractValidator<DbWeatherReport>
-    {
-        public WeatherReportValidator()
-        {
-            RuleFor(p => p.Date).NotEmpty().WithMessage("You must select a date");
-            RuleFor(p => p.TempMax).LessThan(60).WithMessage("The temperature must be less than 60C");
-            RuleFor(p => p.TempMax).GreaterThan(-40).WithMessage("The temperature must be greater than -40C");
-            RuleFor(p => p.TempMin).LessThan(60).WithMessage("The temperature must be less than 60C");
-            RuleFor(p => p.TempMin).GreaterThan(-40).WithMessage("The temperature must be greater than -40C");
-            RuleFor(p => p.FrostDays).LessThan(32).WithMessage("There's a maximun of 31 days in any month");
-            RuleFor(p => p.FrostDays).GreaterThan(0).WithMessage("valid entries are 0-31");
-            RuleFor(p => p.Rainfall).GreaterThan(0).WithMessage("valid entries are 0-31");
-            RuleFor(p => p.SunHours).LessThan(24).WithMessage("Valid entries 0-24");
-            RuleFor(p => p.SunHours).GreaterThan(0).WithMessage("Valid entries 0-24");
-        }
-    }
-}
-```
 
 ### Add Model Classes for the Records
 
@@ -410,14 +353,72 @@ public class DbWeatherReport :IDbRecord<DbWeatherReport>
 }
 ```
 
+### Add Some Utility Classes
+
+I'm a great believer in making life easier.  Extension methods are great for this. Longitudes and Latitudes are handled as decimals, but we need to present them a little differently in the UI. We use decimal extension methods to do this.
+
+```c#
+// CEC.Weather/Extensions/DecimalExtensions.cs
+public static class DecimalExtensions
+{
+    public static string AsLatitude(this decimal value)  => value > 0 ? $"{value}N" : $"{Math.Abs(value)}S";
+
+    public static string AsLongitude(this decimal value) => value > 0 ? $"{value}E" : $"{Math.Abs(value)}W";
+}
+```
+The application uses Blazored Fluent Validation for the Editors.  It's more flexible that the built in validation.
+
+```c#
+// CEC.Weather/Data/Validators/WeatherStationValidator.cs
+using FluentValidation;
+
+namespace CEC.Weather.Data.Validators
+{
+    public class WeatherStationValidator : AbstractValidator<DbWeatherStation>
+    {
+        public WeatherStationValidator()
+        {
+            RuleFor(p => p.Longitude).LessThan(-180).WithMessage("Longitude must be -180 or greater");
+            RuleFor(p => p.Longitude).GreaterThan(180).WithMessage("Longitude must be 180 or less");
+            RuleFor(p => p.Latitude).LessThan(-90).WithMessage("Latitude must be -90 or greater");
+            RuleFor(p => p.Latitude).GreaterThan(90).WithMessage("Latitude must be 90 or less");
+            RuleFor(p => p.Name).MinimumLength(1).WithMessage("Your need a Station Name!");
+        }
+    }
+}
+```
+
+```c#
+// CEC.Weather/Data/Validators/WeatherReportValidator.cs
+using FluentValidation;
+
+namespace CEC.Weather.Data.Validators
+{
+    public class WeatherReportValidator : AbstractValidator<DbWeatherReport>
+    {
+        public WeatherReportValidator()
+        {
+            RuleFor(p => p.Date).NotEmpty().WithMessage("You must select a date");
+            RuleFor(p => p.TempMax).LessThan(60).WithMessage("The temperature must be less than 60C");
+            RuleFor(p => p.TempMax).GreaterThan(-40).WithMessage("The temperature must be greater than -40C");
+            RuleFor(p => p.TempMin).LessThan(60).WithMessage("The temperature must be less than 60C");
+            RuleFor(p => p.TempMin).GreaterThan(-40).WithMessage("The temperature must be greater than -40C");
+            RuleFor(p => p.FrostDays).LessThan(32).WithMessage("There's a maximun of 31 days in any month");
+            RuleFor(p => p.FrostDays).GreaterThan(0).WithMessage("valid entries are 0-31");
+            RuleFor(p => p.Rainfall).GreaterThan(0).WithMessage("valid entries are 0-31");
+            RuleFor(p => p.SunHours).LessThan(24).WithMessage("Valid entries 0-24");
+            RuleFor(p => p.SunHours).GreaterThan(0).WithMessage("Valid entries 0-24");
+        }
+    }
+}
+```
+
 ### Update WeatherForecastDbContext
 
-Add two new *DbSet* properties to the class and two *modelBuilder* calls to *OnModelCreating*.  Add *DistinctList* for using in lists for filter Selects(will see it later).
+Add two new *DbSet* properties to the class and two *modelBuilder* calls to *OnModelCreating*.
 ```c#
 // CEC.Weather/Data/WeatherForecastDbContext.cs
 ......
-
-public DbSet<DbDistinct> DistinctList { get; set; }
 
 public DbSet<DbWeatherStation> WeatherStation { get; set; }
 
@@ -445,7 +446,7 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
 
 We only show the Weather Station Services code here - the Weather Report Services are identical.
  
-We add the *IWeatherStationDataService* and *IWeatherReportDataService* interface.
+Add the *IWeatherStationDataService* and *IWeatherReportDataService* interfaces.
 
 ```c#
 // CEC.Weather/Services/Interfaces/IWeatherStationDataService.cs
@@ -459,7 +460,9 @@ namespace CEC.Weather.Services
     {}
 }
 ```
+
 Add the Server Data Services.
+
 ```c#
 // CEC.Weather/Services/DataServices/WeatherStationServerDataService.cs
 using CEC.Blazor.Data;
@@ -480,7 +483,9 @@ namespace CEC.Weather.Services
     }
 }
 ```
+
 Add the WASM Data Services
+
 ```c#
 // CEC.Weather/Services/DataServices/WeatherStationWASMDataService.cs
 using CEC.Weather.Data;
@@ -534,7 +539,7 @@ namespace CEC.Weather.Services
 
 ## Forms
 
-The Forms rely heavily on the boilerplate code in their respecive base classes.  The code pages are relatively simple, while the razor markup pages contain the record specific UI information.
+The forms rely heavily on the boilerplate code in their respective base classes.  The code pages are relatively simple, while the razor markup pages contain the record specific UI information.
 
 ### WeatherStation Viewer Form
 
@@ -566,7 +571,7 @@ namespace CEC.Weather.Components
     }
 }
 ```
-The razor page builds out the UI controls for displaying the record fields.  Note that we have *@using* statements as this is a library with no *_Imports.Razor*.
+The razor page builds out the UI controls for displaying the record fields.  Note that we have to use *@using* statements in the markup as this is a library file with no *_Imports.Razor*.
 
 ```c#
 // CEC.Weather/Components/Forms/WeatherStationViewerForm.razor
@@ -985,7 +990,7 @@ Add the menu link in *NavMenu*.
 
 ### Filter Control
 
-Add a new control called *MonthYearIDListFilter*. This is used in the *WestherReport* list View to filter the records.  The code is below.
+Add a new control called *MonthYearIDListFilter*. This is used in the *WestherReport* list View to filter the records.
 
 ```c#
 // CEC.Weather/Components/Controls/MonthYearIDListFilter.razor.cs
@@ -1114,7 +1119,7 @@ namespace CEC.Weather.Components
         <tr>
             @if (this.ShowID)
             {
-                <!--Farm-->
+                <!--Weather Station-->
                 <td>
                     <label class="" for="ID">Weather Station:</label>
                     <div class="">
@@ -1140,23 +1145,23 @@ namespace CEC.Weather.Components
     </table>
 </EditForm>
 ```
- The filter displays a set of dropdowns.  When you change a value, the value is added, updated or deleted in the filter list and the service FilterUpdated event is kicked off.  We'll look in more detail at how filtering works in the next article in this series in a section of the article - Component Updating with Events.
+ The filter displays a set of dropdowns.  When you change a value, the value is added, updated or deleted from the filter list and the service FilterUpdated event is kicked off.  This triggers a set of events which kicks off a ListForm UI Update.  We'll look at this in more detail in the next article in this series in a section of the article - Component Updating with Events.  
 
 ## CEC.Blazor.Server
 
-We've now added all the shared code and need to move down to the actual projects.
+All the shared code is now complete and need to move down to the actual projects.
 
 To set up the Server we need to:
 
 1. Configure the correct services - specific to the Server.
-2. Build the Views for each record type - same as the WASM Client.
+2. Build the Views for each record type - these are the same views as used in the WASM Client.
 
 
 ### Startup.cs
 
-We need to update Startup with the new services.  We do this by updating *AddApplicationServices* in *ServiceCollectionExtensions.cs*.
+We need to update Startup with the new services, by updating *AddApplicationServices* in *ServiceCollectionExtensions.cs*.
 
-Note we add the *xxxxxxServerDataService* as a *IxxxxxxDataService*.
+Note *xxxxxxServerDataService* is added as a *IxxxxxxDataService*.
 
 ```c#
 // CEC.Blazor.Server/Extensions/ServiceCollectionExtensions.cs
@@ -1214,7 +1219,7 @@ These are almost trivial.  All the code and markup is in the forms.  We just dec
     };
 }
 ```
-The view is a little more complicated.  In addition to the View Form we add the List Form for the Weather Reports and pass it the WeatherStation ID. 
+The view for WeatherStation is a little more complicated.  We add the View Form for WeatherStation and the List Form for WeatherReports, and pass the WeatherReport list form the WeatherStation ID. 
 ```c#
 @page "/WeatherStation/View"
 @namespace CEC.Blazor.Server.Routes
@@ -1235,8 +1240,10 @@ The view is a little more complicated.  In addition to the View Form we add the 
 
 @namespace CEC.Blazor.Server.Routes
 
+<WeatherReportEditorForm></WeatherReportEditorForm>
+
 ```
-*WeatherReportListView* used the *MonthYearIdListFilter* to control the Weather Report List.  Note *OnlyLoadIfFilter* is set to true to prevent the full recordset being displayed.
+*WeatherReportListView* uses the *MonthYearIdListFilter* to control the Weather Report List.  Note *OnlyLoadIfFilter* is set to true to prevent the full recordset being displayed when no filter is set.
 ```c#
 // CEC.Blazor.Server/Routes/WeatherReport/WeatherReportListView.razor
 @page "/WeatherReport"
@@ -1277,7 +1284,7 @@ To set up the client we need to:
 
 We need to update program with the new services.  We do this by updating *AddApplicationServices* in *ServiceCollectionExtensions.cs*.
 
-Note we add the *xxxxxxWASMDataService* as the *IxxxxxxDataService*.
+*xxxxxxWASMDataService* is added as the *IxxxxxxDataService*.
 
 ```c#
 // CEC.Blazor.WASM/Client/Extensions/ServiceCollectionExtensions.cs
@@ -1315,7 +1322,7 @@ The WASM Server is the API provider.  We need to:
 
 We need to update Startup with the new services.  We do this by updating *AddApplicationServices* in *ServiceCollectionExtensions.cs*.
 
-Note we add the *xxxxxxServerDataService* as the *IxxxxxxDataService*.
+*xxxxxxServerDataService* is added as the *IxxxxxxDataService*.
 
 ```c#
 // CEC.Blazor.WASM.Server/Extensions/ServiceCollectionExtensions.cs
@@ -1472,6 +1479,6 @@ namespace CEC.Blazor.WASM.Server.Controllers
 ```
 
 ### Wrap Up
-This article demonstrates how to build out either a Blazor WASM or Server project from the CEC.Blazor library though adding a more record types to the Weather Application.
+This article demonstrates how to add more record types to the Weather application and build out either the Blazor WASM or Server project to handle the new types.
 
-The final article will look at deploying Blazor Applications.
+In the final article we'll look at some key concepts and code within the application and at deployment.

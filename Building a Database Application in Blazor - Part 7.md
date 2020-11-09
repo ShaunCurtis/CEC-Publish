@@ -1,18 +1,17 @@
-# Building a Database Appication in Blazor 
-# Part 7 - Some Key Project Infrastructure
+# Building a Database Application in Blazor 
+# Part 7 - Key Project Infrastructure
 
-This is the final article in this series and looks at various bits of key infrastructure in more detail.  The articles so far are:
-
+This is the final article in this series and looks at various key bits of project and library infrastructure in more detail.  The articles so far are:
 
 1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
 2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
 3. [View Components - CRUD Edit and View Operations in the UI](https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C)
 4. [UI Components - Building HTML/CSS Controls](https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U)
-5. View Components - CRUD List Operations in the UI
-6. Adding vNew Record Types and the UI to Weather Projects
-7. Some Key Project Infratructure
+5. [View Components - CRUD List Operations in the UI](https://www.codeproject.com/Articles/5280391/Building-a-Database-Application-in-Blazor-Part-5-V)
+6. [Adding New Record Types and the UI to Weather Projects](https://www.codeproject.com/Articles/5281000/Building-a-Database-Application-in-Blazor-Part-6-A)
+7. Key Project Infratructure
 
-The sections in this articles are:
+The sections covered in this article are:
 * Components and Events
 * Filtering and Paging
 * Entity Framework Extensions
@@ -25,7 +24,13 @@ The completed code for this article is in [CEC.Weather GitHub Repository](https:
 
 ## Components and Events
 
-A lot of the project code runs asynchronously.  Async programming requires a different approach to coding the UI for component initialisation and event handling.  The application no longer lives in a simple sequential world where data processing completes before the UI is rendered, and any updates cause a complete UI re-render.  Components are rendered before their dependant data is ready, and the UI updated piecemeal.
+The application uses asynchronous programming which requires a different coding mindset.  The application no longer exists in a simple sequential world where data processing completes before the UI is rendered, and any updates cause a complete UI re-render.  The View is no longer a monolithic entity: it consists of a set of components with their own lifecycles, events and update mechanisms.
+
+### Component Overview
+
+There's a detailed discussion on components [here](https://www.codeproject.com/Articles/5277618/A-Dive-into-Blazor-Components).
+
+### UIErrorHandler
 
 The application uses the *UIErrorHandler* component to handle data loading and UI updates.  We looked at this component article 4 when looking at UI Controls.  *UIErrorHandler* has three states - Loading, Error and Complete.  All UI components/code wrapped within the component as child content is only rendered when the state is complete.  We don't need load handling code in each component on a form - the form only gets loaded when record/recordset loading is complete.
 
@@ -65,7 +70,7 @@ protected virtual bool IsDataLoading { get; set; } = true;
 protected virtual bool IsLoaded => !(this.IsDataLoading) && !(this.IsError);
 ```
 
-In *SetParametersAsync*, record loading takes place in *OnParametersSetAsync* (in *RecordComponentBase*).  *OnParametersSetAsync* is the last step in the *ComponentBase.SetParametersAsync* process.  Once *OnParametersSetAsync* is complete, *StateHasChanged* is called on the component, precipitatiing a  re-render. The record is either in error or loaded: *UIErrorHandler* either displays the error message or renders the child content.
+In the component *SetParametersAsync* cycle, record loading takes place in *OnParametersSetAsync* (*RecordComponentBase*).  *OnParametersSetAsync* is the last step in the *ComponentBase.SetParametersAsync* process.  Once complete, *StateHasChanged* is called on the component, precipitatiing a  re-render. The record is either in error or loaded: *UIErrorHandler* either displays the error message or renders the child content.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
@@ -97,11 +102,11 @@ protected virtual async Task LoadRecordAsync(bool firstload = false)
     }
 }
 ```
-During initialisation *IsDataLoading* is set to true.  If we're reponding to an event it not, so we just set it.  We only call *StateHasChanged* if *FirstLoad* is false.  *OnParametersSetAsync* specifically calls *LoadRecordAsync(true)*.  After loading the record, we set *IsDataLoading* to false and call *StateHasChanged* if necessary.
+During initialisation *IsDataLoading* is set to true.  If we're reponding to an event it's not, so we just set it.  We only call *StateHasChanged* if *FirstLoad* is false.  *OnParametersSetAsync* specifically calls *LoadRecordAsync(true)*.  After loading the record, we set *IsDataLoading* to false and call *StateHasChanged* if necessary.
 
-As we use *Querystrings* to specify record IDs, we need to handle where only the querystring changes but the view doesn't.  The Router detects this and raises a *SameComponentNavigation* event.
+The application uses *Querystring* to specify record IDs, it needs to handle situations where the querystring changes but the view doesn't.  The Router detects this and raises a *SameComponentNavigation* event.
 
-We wire up this event in *RecordComponentBase* in *OnAfterRenderAsync*.  Note that in general you should wire up events here at the end of the component initialisation cycle rather than earlier, to prevent "False Positives", re-re-re-....rendering/loading and sometimes infinite loops. 
+We wire up this event in *RecordComponentBase* in *OnAfterRenderAsync*.  In general you should wire up events at the end of the component initialisation cycle rather than earlier to prevent "False Positives", re-re-re-....rendering/loading and sometimes infinite loops. 
 
 ```c#
 // CEC.Blazor/Components/BaseForms/RecordComponentBase.cs
@@ -126,19 +131,20 @@ protected async void OnSameRouteRouting(object sender, EventArgs e)
 ```
 ### Service Events
 
-The specific controller service manages the events for a record type.  There are five Contoller Service events exposed to the UI:
+The specific controller service manages the events for a record type.  There are six Contoller Service and two Router Service events used by UI components:
 
-1. RecordHasChanged - triggered when a record is updated or changed
-2. ListHasChanged - triggered when the recordset has changed
-3. FilterUpdated - triggered when the filter has changed.  Normally triggers a recordset update and thus a ListHasChanged event.
-4. OnDirty - triggered during editing when the record set differs from the stored record.
-5. OnClean - triggered when the edit record set is the same as the stored record.
-
-*OnDirty* and *OnClean* are specific to Edit Forms.  We'll explore List Forms here to look at how the vents are triggered and consumed.
+1. *RecordHasChanged* - *IControllerService* - triggered when a record is updated or changed
+2. *ListHasChanged* - *IControllerService* - triggered when the recordset has changed
+3. *FilterUpdated* - *IControllerService* - triggered when the filter has changed.  Normally triggers a recordset update and thus a ListHasChanged event.
+4. *OnDirty* - *IControllerService* - triggered during editing when the record set differs from the stored record.
+5. *OnClean* - *IControllerService* - triggered when the edit record set is the same as the stored record.
+6. *PageChanged* -*IPagingControllerService* - triggered when the List Page has changed.
+7. *SameComponentNavigation* - *RouterSessionService* - triggered when *NavigationManager* triggers a navigation event to the same View as Loaded.  
+8. *NavigationCancelled* - *RouterSessionService* - triggered when a *NavigationManager* event is cancelled by the Router because the record is dirty.  Used in Edit Forms.
 
 #### List Form Events
 
-The important core code to understand about List updates is shown below in the *BaseContontrollerService*. We need to differentiate between paging operations and recordset update operations (such as filter changes). The recordset set only gets updated is *this.IsRecords* is false.  So we set *this.Records=null* whenever we need to reload the recordset with the current filters.  *GetFilteredRecordListAsync* dictates what filtering is applied.  Filtering is covered in a later section of this article.
+Paging operations, triggered by the *PagingControl*, differ from recordset List operations, triggered by filter changes and editing of records in dialogs.  *GetFilteredListAsync* is called on every page change.  However, it only runs when *this.IsRecords* is false.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/BaseControllerService.cs
@@ -154,16 +160,16 @@ public async virtual Task<bool> GetFilteredListAsync()
     return false;
 }
 ```
-*IsRecords* checks the record count. -1 means the recordset is null, while 0 - x means the recordset exists.  Note a record count of 0 is a valid record count.
+*IsRecords* checks the record count. -1 means the recordset is null, while 0 - means the recordset exists.  A record count of 0 is a valid record count.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/BaseControllerService.cs
 public bool IsRecords => this.RecordCount >= 0;
 public int RecordCount => this.Records?.Count ?? -1;
 ```
+*this.Records* is set to null whenever the application needs to trigger a recordset update.  *GetFilteredRecordListAsync* dictates what filtering is applied.  It's virtual and can be overridden.  Filtering is covered in a later section of this article.
 
-
-*ListComponentBase* subscribes to three events:
+*ListComponentBase* subscribes to three events in *OnAfterRender* i.e. once the component is initialized and first rendered:
 
 ```c#
 // CEC.Blazor/Components/BaseForms/ListComponentBase.cs
@@ -186,7 +192,7 @@ protected override void OnAfterRender(bool firstRender)
 // CEC.Blazor/Components/BaseForms/ListComponentBase.cs
 public IControllerPagingService<TRecord> Paging => this.Service != null ? (IControllerPagingService<TRecord>)this.Service : null;
 ```
-We register for the event so we know when paging changes the displayed page and can trigger a UI update.  UpdateUi is pretty simple - it updates the state which triggers a render of the component, dislaying he new page.
+*PageHasChanged* tells the list form the displayed list page has changed and a UI update is needed to display the new page.  *UpdateUi* is pretty simple - it invokes *StateHasChanged* which adds the Component's Render code onto the Render Queue (which updates the component UI when it's run). Calling *StateHasChanged* through *InvokeAsync* ensures it's called on the UI thread.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/ListComponentBase.cs
@@ -195,7 +201,7 @@ protected void UpdateUI(object sender, int recordno) => this.InvokeAsync(StateHa
 
 #### ListHasChanged
 
-This gets triggered whenever the recordset changes.  We need to reset the list to the new recordset.  The code is shown below:
+*ListHasChanged* is triggered whenever the recordset changes in the Controller Service.  From the *ListComponentBase* perspective, the displayed data page needs to be refreshed when the recordset has changed.  The code is shown below:
 
 ```c#
 // CEC.Blazor/Components/BaseForms/ListComponentBase.cs
@@ -205,7 +211,7 @@ protected async void OnRecordsUpdate(object sender, EventArgs e)
     {
         // set loading
         this.Loading = true;
-        // trigger a UI update which will display loading
+        // trigger a UI update - UIErrorHanlder will display loading
         this.StateHasChanged();
         // reload paging based on the new recordset and filter i.e. page 1 with the default sorting.
         await this.Paging.LoadAsync();
@@ -217,7 +223,7 @@ protected async void OnRecordsUpdate(object sender, EventArgs e)
 }
 ```
 
-*LoadAsync* is shown below.  UIt triggers a further event - PageHasChanged.
+*LoadAsync* is shown below.  *LoadAsync* triggers a further event - *PageHasChanged*.
 
 ```c#
 // CEC.Blazor/Components/BaseForms/BaseControllerService.cs
@@ -270,9 +276,11 @@ public async virtual Task ResetListAsync()
 
 ### List/Recordset Filtering
 
-Filtering controls what gets displayed in recordsets.
+Filtering provides control over what gets loaded in recordsets.
 
-*FilterList* implements the *IFilterList* interface.
+#### IFilterList and FilterList 
+
+Both are in the core **CEC.Blazor** library. *FilterList* simply implements the *IFilterList* interface.
 
 ```c#
 // CEC.Blazor/Components/Interfaces/IFilterList.cs
@@ -355,12 +363,9 @@ namespace CEC.Blazor.Components
 }
 ```
 
+#### Filtering in the List Form
 
-
-
-## Filtering
-
-Filter loading is part of *OnParametersSetAsync* process in *ListComponentBase*
+The Filter is initially loaded in *OnParametersSetAsync* in *ListComponentBase*.  The base *LoadFilter()* method only sets the Filter *OnlyLoadIfFilter* property to the form *OnlyLoadIfFilter*.  This property lets the programmer stop full recordset loading where is is not appropriate - such as with large datasets. 
 
 ```c#
 // CEC.Blazor/Components/BaseForms/ListComponentBase.cs
@@ -385,8 +390,125 @@ protected virtual void LoadFilter()
     if (IsService) this.Service.FilterList.OnlyLoadIfFilters = this.OnlyLoadIfFilter;
 }
 ```
+The Service *FilterHasChanged* event is wired up to the form *FilterUpdated* event handler.  This resets the service list (to null), triggers a paging service full reload (the recordset is null) and resets the recordset page to 1.  Once complete it triggers a UI update through *StateHasChanged*.
 
-*WeatherReportListForm* overrides *LoadFilter* to set up the record specific filters.
+```c#
+// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
+.........
+protected override void OnAfterRender(bool firstRender)
+{
+    if (firstRender)
+    {
+        this.Paging.PageHasChanged += this.UpdateUI;
+        this.Service.ListHasChanged += this.OnRecordsUpdate;
+        // Register the FilterChanged event hsandler with the Service FilterHasChanged event
+        this.Service.FilterHasChanged += this.FilterUpdated;
+    }
+    base.OnAfterRender(firstRender);
+}
+........
+protected virtual async void FilterUpdated(object sender, EventArgs e)
+{
+    // reset the List
+    await this.Service.ResetListAsync();
+    // kick off a Paging Load
+    await this.Paging.LoadAsync();
+    // Update the UI to show the new recordset
+    await InvokeAsync(this.StateHasChanged);
+}
+.......
+```
+
+We've seen where filtering fits into *ListHasChanged* in the section above.
+
+#### MonthYearIDListFilter
+
+To implement a filter we need to build a Filter Control.  These are specific so implemented in the **CEC.Weather** library.  The one implemented in the project *MonthYearIDListFilter* filters the Weather Reports.  It consists of three select dropddowns.  It works by tracking the ID, Month and Year Select values, and when these change triggering a Filter Changed Event.
+
+The code snippets below shows how this is implemented for the Weather Station Select.  The relevant Controller Service is injected - in this case the Weather Report Service.  The Lookuplist gets loaded in *OnInitializedAsync* through this service.  The ID property is wired into the Service Filterlist and calls *TriggerFilterChangedEvent* on the Service whenever the filter is changed.
+
+```c#
+// CEC.Weather/Components/Controls/MonthYearIDListFilter.razor.cs
+
+        .....
+        // Inject the Controller Service
+        [Inject]
+        private WeatherReportControllerService Service { get; set; }
+
+        .....
+        // Weather Station Lookup List
+        private SortedDictionary<int, string> IdLookupList { get; set; }
+
+        private long OldID = 0;
+
+        // Weather Station value - adds or removes the value from the filter list and kicks off Filter changed if changed
+        private int ID
+        {
+            get => this.Service.FilterList.TryGetFilter("WeatherStationID", out object value) ? (int)value : 0;
+            set
+            {
+                if (value > 0) this.Service.FilterList.SetFilter("WeatherStationID", value);
+                else this.Service.FilterList.ClearFilter("WeatherStationID");
+                if (this.ID != this.OldID)
+                {
+                    this.OldID = this.ID;
+                    this.Service.TriggerFilterChangedEvent(this);
+                }
+            }
+        }
+
+        protected override async Task OnInitializedAsync()
+        {
+            this.OldYear = this.Year;
+            this.OldMonth = this.Month;
+            await GetLookupsAsync();
+        }
+
+        // Method to get he LokkupLists
+        protected async Task GetLookupsAsync()
+        {
+            this.IdLookupList = await this.Service.GetLookUpListAsync<DbWeatherStation>("-- ALL STATIONS --");
+            .....
+        }
+    }
+}
+```
+
+```c#
+// CEC.Weather/Components/Controls/MonthYearIDListFilter.razor
+
+<EditForm EditContext="this.EditContext">
+
+    <table class="table">
+        <tr>
+            @if (this.ShowID)
+            {
+                <!--ID-->
+                <td>
+                    <label class="" for="ID">Weather Station:</label>
+                    <div class="">
+                        <InputControlSelect OptionList="this.IdLookupList" @bind-Value="this.ID"></InputControlSelect>
+                    </div>
+                </td>
+            }
+            <td>
+                <!--Month-->
+            </td>
+            <td>
+                <!--Year-->
+            </td>
+        </tr>
+    </table>
+</EditForm>
+```
+
+#### WeatherReportListForm
+
+*WeatherReportListForm* is a little different from the other list forms.  We use it in two places:
+1. *WeatherReportListView* where we want to filter it based on Weather Station, Month and Year - we've looked at how to build a filter to do this above.
+2. *WeatherStationViewerView* where we display a specific Weather Station and a list of it's reports.
+
+*LoadFilter* is overridden in *WeatherReportListForm*.  It loads the WeatherStationID parameter - set in *WeatherStationViewerView* - into the filter and sets *OnlyLoadIfFilters* to true to stop a full recrodset load.
 
 ```c#
 // CEC.Weather/Components/Forms/WeatherReport/WeatherReportListForm.razor.cs
@@ -402,13 +524,75 @@ protected override void LoadFilter()
     {
         this.Service.FilterList.Filters.Clear();
         this.Service.FilterList.Filters.Add("WeatherStationID", this.WeatherStationID);
+        this.Service.FilterList.OnlyLoadIfFilters = true;
     }
     base.LoadFilter();
 }
 ......
 ```
 
-To digress a little, the Filter magic is again in a DbContext extension.
+## Entity Framework Extensions
+
+There are several DBContext extension methods in the **CEC.Blazor** library to help in EF operations.  These are all called from the various data layer Services. 
+
+The primary method is *ExecStoredProcAsync* which is used in all the CUD operations.
+
+```c#
+// CEC.Blazor/Extensions/DbContextExtensions.cs
+public static async Task<bool> ExecStoredProcAsync(this DbContext context, string storedProcName, List<SqlParameter> parameters)
+{
+    var result = false;
+
+    // Get a Command object from the DbContext Database
+    var cmd = context.Database.GetDbConnection().CreateCommand();
+    cmd.CommandText = storedProcName;
+    cmd.CommandType = CommandType.StoredProcedure;
+    // Add the SqlParameters
+    parameters.ForEach(item => cmd.Parameters.Add(item));
+    using (cmd)
+    {
+        // check the command state and if necessary open it
+        if (cmd.Connection.State == ConnectionState.Closed) cmd.Connection.Open();
+        try
+        {
+            // execute the Stored P{rocedure
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch { }
+        finally
+        {
+            cmd.Connection.Close();
+            result = true;
+        }
+    }
+    return result;
+}
+ ```
+
+The rest of the methods are used by the data service boilerplate code and use Reflection to get EF objects from their names. 
+
+*GetDbSet* is used by serveral methods.  It gets the DbSet from a DbSet name.
+
+```c#
+// CEC.Blazor/Extensions/DbContextExtensions.cs
+private static DbSet<TRecord> GetDbSet<TRecord>(this DbContext context, string dbSetName = null) where TRecord : class
+{
+    // Get the property info object for the DbSet 
+    var pinfo = context.GetType().GetProperty(dbSetName ?? IDbRecord<TRecord>.RecordName);
+    // Get the property DbSet
+    return (DbSet<TRecord>)pinfo.GetValue(context);
+}
+```
+*GetRecordAsync* uses *GetDbSet* to get the DbSet and then the *IDbRecord* interface ID to get the record. 
+
+```c#
+public async static Task<TRecord> GetRecordAsync<TRecord>(this DbContext context, int id, string dbSetName = null) where TRecord : class, IDbRecord<TRecord>
+{
+    var dbset = GetDbSet<TRecord>(context, dbSetName);
+    return await dbset.FirstOrDefaultAsync(item => ((IDbRecord<TRecord>)item).ID == id);
+}
+```
+*GetRecordFilteredListAsync* uses the same methodology above and then gets the property names using the same methods.
 
 ```c#
 // CEC.Blazor/Extensions/DbContextExtensions.cs
@@ -444,191 +628,10 @@ public async static Task<List<TRecord>> GetRecordFilteredListAsync<TRecord>(this
 ```
 
 
-Add a new control called *MonthYearIDListFilter*. This is used in the *WestherReport* list View to filter the records.  The code is below.
-
 ```c#
-// CEC.Weather/Components/Controls/MonthYearIDListFilter.razor.cs
-using CEC.Blazor.Data;
-using CEC.Weather.Data;
-using CEC.Weather.Services;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Forms;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Threading.Tasks;
-
-namespace CEC.Weather.Components
-{
-    public partial class MonthYearIDListFilter : ComponentBase
-    {
-        // Inject the Controller Service
-        [Inject]
-        private WeatherReportControllerService Service { get; set; }
-
-        // Boolean to control the ID Control Display
-        [Parameter]
-        public bool ShowID { get; set; } = true;
-
-        // Month Lookup List
-        private SortedDictionary<int, string> MonthLookupList { get; set; }
-
-        // Year Lookup List
-        private SortedDictionary<int, string> YearLookupList { get; set; }
-
-        // Weather Station Lookup List
-        private SortedDictionary<int, string> IdLookupList { get; set; }
-
-        // Dummy Edit Context for selects
-        private EditContext EditContext => new EditContext(this.Service.Record);
-
-        // privates to hold current select values
-        private int OldMonth = 0;
-        private int OldYear = 0;
-        private long OldID = 0;
-
-        // Month value - adds or removes the value from the filter list and kicks off Filter changed if changed
-        private int Month
-        {
-            get => this.Service.FilterList.TryGetFilter("Month", out object value) ? (int)value : 0;
-            set
-            {
-                if (value > 0) this.Service.FilterList.SetFilter("Month", value);
-                else this.Service.FilterList.ClearFilter("Month");
-                if (this.Month != this.OldMonth)
-                {
-                    this.OldMonth = this.Month;
-                    this.Service.TriggerFilterChangedEvent(this);
-                }
-            }
-        }
-
-        // Year value - adds or removes the value from the filter list and kicks off Filter changed if changed
-        private int Year
-        {
-            get => this.Service.FilterList.TryGetFilter("Year", out object value) ? (int)value : 0;
-            set
-            {
-                if (value > 0) this.Service.FilterList.SetFilter("Year", value);
-                else this.Service.FilterList.ClearFilter("Year");
-                if (this.Year != this.OldYear)
-                {
-                    this.OldYear = this.Year;
-                    this.Service.TriggerFilterChangedEvent(this);
-                }
-            }
-        }
-
-        // Weather Station value - adds or removes the value from the filter list and kicks off Filter changed if changed
-        private int ID
-        {
-            get => this.Service.FilterList.TryGetFilter("WeatherStationID", out object value) ? (int)value : 0;
-            set
-            {
-                if (value > 0) this.Service.FilterList.SetFilter("WeatherStationID", value);
-                else this.Service.FilterList.ClearFilter("WeatherStationID");
-                if (this.ID != this.OldID)
-                {
-                    this.OldID = this.ID;
-                    this.Service.TriggerFilterChangedEvent(this);
-                }
-            }
-        }
-
-        protected override async Task OnInitializedAsync()
-        {
-            this.OldYear = this.Year;
-            this.OldMonth = this.Month;
-            await GetLookupsAsync();
-        }
-
-        // Method to get he LokkupLists
-        protected async Task GetLookupsAsync()
-        {
-            this.IdLookupList = await this.Service.GetLookUpListAsync<DbWeatherStation>("-- ALL STATIONS --");
-            // Get the months in the year
-            this.MonthLookupList = new SortedDictionary<int, string> { { 0, "-- ALL MONTHS --" } };
-            for (int i = 1; i < 13; i++) this.MonthLookupList.Add(i, CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(i));
-            // Gets a distinct list of Years in the Weather Reports
-            {
-                var list = await this.Service.GetDistinctListAsync(new DbDistinctRequest() { FieldName = "Year", QuerySetName = "WeatherReport", DistinctSetName = "DistinctList" });
-                this.YearLookupList = new SortedDictionary<int, string> { { 0, "-- ALL YEARS --" } };
-                list.ForEach(item => this.YearLookupList.Add(int.Parse(item), item));
-            }
-
-        }
-    }
-}
 ```
-```c#
-// CEC.Weather/Components/Controls/MonthYearIDListFilter.razor
-@using CEC.Blazor.Components.FormControls
-@using Microsoft.AspNetCore.Components.Forms
-
-@namespace CEC.Weather.Components
-@inherits ComponentBase
-
-<EditForm EditContext="this.EditContext">
-
-    <table class="table">
-        <tr>
-            @if (this.ShowID)
-            {
-                <!--Farm-->
-                <td>
-                    <label class="" for="ID">Weather Station:</label>
-                    <div class="">
-                        <InputControlSelect OptionList="this.IdLookupList" @bind-Value="this.ID"></InputControlSelect>
-                    </div>
-                </td>
-            }
-            <td>
-                <!--Month-->
-                <label class="">Month:</label>
-                <div class="">
-                    <InputControlSelect OptionList="this.MonthLookupList" @bind-Value="this.Month"></InputControlSelect>
-                </div>
-            </td>
-            <td>
-                <!--Year-->
-                <label class="">Year:</label>
-                <div class="">
-                    <InputControlSelect OptionList="this.YearLookupList" @bind-Value="this.Year"></InputControlSelect>
-                </div>
-            </td>
-        </tr>
-    </table>
-</EditForm>
-```
- The filter displays a set of dropdowns.  When you change a value, the value is added, updated or deleted in the filter list and the service FilterUpdated event is kicked off.  The List Form has registered with this event, resets and reloads the recordset (with the updated filter) and refresh the display.
 
 ```c#
-// CEC.Blazor/Components/BaseForms/ListComponentBase.cs
-.........
-protected override void OnAfterRender(bool firstRender)
-{
-    if (firstRender)
-    {
-        this.Paging.PageHasChanged += this.UpdateUI;
-        this.Service.ListHasChanged += this.OnRecordsUpdate;
-        // Register the FilterChanged event hsandler with the Service FilterHasChanged event
-        this.Service.FilterHasChanged += this.FilterUpdated;
-    }
-    base.OnAfterRender(firstRender);
-}
-........
-protected virtual async void FilterUpdated(object sender, EventArgs e)
-{
-    // reset the List
-    await this.Service.ResetListAsync();
-    // kick off a Paging Load
-    await this.Paging.LoadAsync();
-    // Update the UI to show the new recordset
-    await InvokeAsync(this.StateHasChanged);
-}
-.......
 ```
 
 ### Wrap Up
-This article demonstrates how to build out either a Blazor WASM or Server project from the CEC.Blazor library though adding a more record types to the Weather Application.
-
-The final article will look at deploying Blazor Applications.
