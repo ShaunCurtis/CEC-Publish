@@ -1,0 +1,452 @@
+
+
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>Article Source</title>
+<link rel="stylesheet" type="text/css" 
+    href="https://codeproject.freetls.fastly.net/App_Themes/CodeProject/Css/Main.css?dt=2.8.20201110.1" />
+<base href="https://www.codeproject.com/KB/aspnet/" />
+</head>
+<body>
+<!--
+HTML for article "A Dive into Blazor Components" by Shaun C Curtis
+URL: https://www.codeproject.com/KB/aspnet/5277618.aspx
+Copyright 2020 by Shaun C Curtis
+All formatting, additions and alterations Copyright © CodeProject, 1999-2020
+-->
+
+
+
+<!-- Start Article -->
+<div id="ArticleContent" style=" padding: 20px;">
+
+
+<h1>Introduction</h1>
+
+<p>The Blazor UI consists of a set of components organised in a component tree. In this article we'll look at the anatomy of a component, it's life cycle and how Blazor manages the component tree.</p>
+
+<p>Before diving in we need to understand where components fit in the Blazor framework.</p>
+
+<h1>Blazor Contexts</h1>
+
+<p>A Blazor Server Application has three contexts:</p>
+
+<ol>
+	<li><strong>The Server Application</strong> - the DotNetCore application running on the Web Server. There's one Server Application running for all clients, and one instance of Singleton Services defined in <em>Startup.cs</em>.</li>	<li><strong>The Client Application</strong> [aka the SPA] - the Blazor web page running in the client web browser. It's the client end of a SignalR session with the Server Application.</li>	<li><strong>The SignalR Hub Session</strong> - a SignalR Session in the Blazor Hub running within the Server Application. There's one Hub Session per Client Application. It's the server end of the SignalR session between the browser and the server.</li></ol>
+
+<p>To expand on this so there's no misunderstanding, two browser windows or tabs open on the same application are two totally separate client applications, with two Hub Sessions. They share the same singleton services, but that's all. The same as having two copies of Visual Studio running. <strong>&lt;F5&gt;</strong> the browser and the application restarts - just like closing and then re-starting a desktop application.</p>
+
+<p>A Blazor WASM&nbsp;Application has one&nbsp;context:</p>
+
+<ol>
+	<li><strong>The Client Application</strong> [aka the SPA] - the Blazor web page running in the client web browser. It's standalone.</li></ol>
+
+<p>Again so there's no misunderstanding, two browser windows or tabs open on the same application are two totally separate client applications. The same as having two copies of Visual Studio running. <strong>&lt;F5&gt;</strong> the browser and the application restarts - just like closing and then re-starting a desktop application.</p>
+
+<h1>The Renderer and The RenderTree</h1>
+
+<p>A detailed description of how the RenderTree works is beyond the scope of this article, but you need a basic grasp of the concepts to understand the rendering process.</p>
+
+<p>The Renderer and RenderTree reside in the the Client Application is WASM and in the SignalR Hub Session in Server i.e. one per connected Client Application.</p>
+
+<p>The UI - what gets displayed in the application - is held in the RenderTree and managed by the Renderer.  The RenderTree is the branch system with one or more components attached to each branch.  Each component is a C# class that builds a block of HTML code.  When the RenderTree gets updated by a component event, the Renderer compares the original RenderTree with the updated one using a diffing process, and sends any changes to the UI.</p>
+
+<h1>The Client Application</h1>
+
+<h2>Blazor Server</h2>
+
+<p>A Blazor Client Application starts with an HTTP request to a Blazor configured DotNet Core Server Application running on a web server.</p>
+
+<ol>
+	<li>If <code>UseStaticFiles</code> is configured, the server first checks for a static file in <code>wwwroot</code>. If it exists, it servers it - no Client Application is created, just standard HTTP operations. This is how requests for CSS, JS and other resource files are handled.</li>	<li>No static file, the Server Application assumes it's a Blazor page. It builds the page from <em>_Host.cshtml</em> - a standard Razor HTML page, with stylesheet and script references and a single <code>&lt;app&gt;</code> component.</li></ol>
+
+<h3>_Host.cshtml</h3>
+
+<p>The Blazor specific sections in <code>_Host.cshtml</code> are:</p>
+
+<pre lang="xml" data-lang-orig="xml">&lt;app&gt;
+    &lt;component type="typeof(App)" render-mode="ServerPrerendered" /&gt;
+&lt;/app&gt;</pre>
+
+<p><code>App</code> is a component class defined in <code>App.razor</code>. It's the root component for the render tree. What gets built depends on the <code>render-mode</code> setting. <code>Server</code> renders a blank page while <code>ServerPrerendered</code> creates a static version of the <code>rendertree</code>. It's important to understand what's going on at this point. We don't have a Client Application running, we're in the "<code>bootstrap</code>" process. The page contains the code - in <em>blazor.server.js</em> - to start the Client Application, but until it's first rendered by the web browser, and <em>blazor.server.js</em> is run, there's no SignalR Session and therefore no Client Application. The Client Application gets loaded by:</p>
+
+<pre lang="html" data-lang-orig="html">&lt;script src="_framework/blazor.server.js"&gt;&lt;/script&gt;</pre>
+
+<p>Once <code>blazor.server.js</code> loads, the client application is established in the browser page and a SignalR connection established with the server. However, we're not finished. The loaded page is static, not live - there's no wiring into JSInterop and the server site components. To complete the initial load, the Client Application calls the Blazor Hub Session and re-requests the routed component. It then applies the resultant DOM changes to the Client Application DOM.</p>
+
+<p>Everything is now wired up and running. We have a Client Application running with a live SignalR connection to the Blazor Hub. The Hub Session has a <code>Renderer</code> object that maintains a server side copy of the DOM and pushes any changes down to the Client Application through the SignalR connection. Client Application events are routed via SignalR to the Blazor Hub Renderer and mapped to component events/methods in the rendertree. All page changes within the client application are routed through the SignalR connection - there's no standard http requests - and handled by the configured router. A request to navigate to a page outside the routed context causes a full browser load, closing the SignalR connection and thus the Client Application.</p>
+
+<h2>Blazor WASM</h2>
+
+<p>A Blazor Client Application starts with an HTTP request to a web server with the Blazor files installed and an <code>index.html</code>.</p>
+
+<h3>Index.html</h3>
+
+<p>The Blazor specific section is:</p>
+
+<pre lang="xml" data-lang-orig="xml">&lt;app&gt;
+    ....
+&lt;/app&gt;</pre>
+
+<p><code>App</code> is a component class defined in <code>App.razor</code>. It's the root component for the render tree.&nbsp;It's important to understand what's going on at this point. We don't have a Client Application running, we're in the "<code>bootstrap</code>" process. The page contains the code - in <em>blazor.webassembly.js</em> - to start the Client Application, but until it's first rendered by the web browser, and <em>blazor.webassemblyjs</em> is run, and the WASM code downloaded and installed there's no Client Application. The Client Application gets loaded by:</p>
+
+<pre lang="html" data-lang-orig="html">&lt;script src="_framework/blazor.webassembly.js"&gt;&lt;/script&gt;</pre>
+
+<p>Once the WASM code is loaded, it creates the render tree from <code>App</code>&nbsp;down and re-renders the page.&nbsp; We now have a live apllication.</p>
+
+<p>From this point on Server and WASM are the same.</p>
+
+<h3 id="app-razor">App.razor</h3>
+
+<p><code>App.razor</code> is in the root component and looks like this:</p>
+
+<pre lang="xml" data-lang-orig="xml">&lt;Router AppAssembly="@typeof(Program).Assembly"&gt;
+    &lt;Found Context="routeData"&gt;
+    &lt;RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" /&gt;
+    &lt;/Found&gt;
+    &lt;NotFound&gt;
+    &lt;LayoutView Layout="@typeof(MainLayout)"&gt;
+    &lt;p&gt;Sorry, there's nothing at this address.&lt;/p&gt;
+    &lt;/LayoutView&gt;
+    &lt;/NotFound&gt;
+&lt;/Router&gt;</pre>
+
+<p>The component initializes Routing through the Router Component. It loads a list of the Server Application routes - Routed Components on the site - and passes the Router Component selected to the <code>RouteView</code> component. If no route exists, it builds the <code>NotFound</code> section. Note that <code>RouteView</code> defines a default layout page for the application.</p>
+
+<h3 id="mainlayout-razor">MainLayout.razor</h3>
+
+<p>Layout pages inherit from <code>LayoutComponentBase</code>. A basic layout page looks like this:</p>
+
+<pre lang="html" data-lang-orig="html">@inherits LayoutComponentBase
+
+&lt;div class="sidebar"&gt;
+    &lt;NavMenu /&gt;
+&lt;/div&gt;
+
+&lt;div class="main"&gt;
+    &lt;div class="top-row px-4"&gt;
+        &lt;a href="https://docs.microsoft.com/aspnet/" target="_blank"&gt;About&lt;/a&gt;
+    &lt;/div&gt;
+
+    &lt;div class="content px-4"&gt;
+        @Body
+    &lt;/div&gt;
+&lt;/div&gt;</pre>
+
+<p>Another Blazor Component. A sidebar containing a <code>&lt;NavMenu&gt;</code> component, a top bar with standard HTML and a content area where the Routed Component is inserted and rendered at the <code>@Body</code> placeholder.</p>
+
+<h2 id="components">Components</h2>
+
+<p>Everything in the Blazor UI is a component: components are normal C# classes that implement <code>IComponent</code>.&nbsp; Components in Blazor Server and WASM are the same and normally interchangable.  App and Router above are both components.</p>
+
+<p>The <code>IComponent</code> interface definition is:</p>
+
+<pre lang="cs" data-lang-orig="cs">public interface IComponent
+{
+    void Attach(RenderHandle renderHandle);
+    Task SetParametersAsync(ParameterView parameters);
+}</pre>
+
+<p>My first reaction on seeing this was "What? Something missing here. Where's all those events and initialization methods?" Every article you read talks about <code>OnInitialized</code>, ... They're wrong because&nbsp;they're confused. Blazor components implement <code>IComponent</code>, and are referenced and called through the interface. <code>ComponentBase</code> is just one implementation of <code>IComponent</code>. There's a simpler implementation below.</p>
+
+<p>Let's look at what is defined in more detail. The Blazor Hub Session has a <code>Renderer</code> object that holds the <code>App</code> component <code>rendertree</code> for the current URL. To quote the class documentation:</p>
+
+<p>Renderer provides mechanisms:</p>
+
+<ol>
+	<li>For rendering hierarchies of <code>IComponent</code> instances</li>	<li>Dispatching events to them</li>	<li>Notifying when the user interface is being updated</li></ol>
+
+<p>A <code>RenderHandle</code> structure:</p>
+
+<ol>
+	<li>Allows a component to interact with its renderer</li></ol>
+
+<p>Going back to the <code>IComponent</code> interface:</p>
+
+<ol>
+	<li><code>Attach</code> is called by the Renderer when an <code>IComponent</code> object is attached to the <code>Rendertree</code>.  It passes to the component a reference to the Renderer. The <code>IComponent</code> object uses the <code>RenderHandle</code> to queue individual component renders onto the Renderer's <code>RenderQueue</code>. More about this later.</li>	<li><code>SetParametersAsync</code> is called by the renderer when a component has parameter changes.</li></ol>
+
+<h3>A Simple IComponent Implementation</h3>
+
+<p>Let's look at a simple <code>IComponent</code> implementation - building a standard HTML <code>Div</code> with content.</p>
+
+<pre lang="cs" data-lang-orig="cs">using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
+
+namespace CEC.Blazor.Components.UIControls
+{
+    public class UIHelloDiv : IComponent
+    {
+        [Parameter]
+        public RenderFragment ChildContent { get; set; }
+
+        private RenderHandle _renderHandle;
+        private readonly RenderFragment _componentRenderFragment;
+        private bool _RenderEventQueued;
+
+        public UIHelloDiv() =&gt; _componentRenderFragment = builder =&gt;
+        {
+            this._RenderEventQueued = false;
+            BuildRenderTree(builder);
+        };
+
+        public void Attach(RenderHandle renderHandle) =&gt; _renderHandle = renderHandle;
+
+        public Task SetParametersAsync(ParameterView parameters)
+        {
+            parameters.SetParameterProperties(this);
+            if (!this._RenderEventQueued)
+            {
+                this._RenderEventQueued = true;
+                _renderHandle.Render(_componentRenderFragment);
+            }
+            return Task.CompletedTask;
+        }
+
+        protected void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "hello-world");
+            if (this.ChildContent != null) builder.AddContent(2, ChildContent);
+            else builder.AddContent(2, (MarkupString)"&lt;h4&gt;Hello World&lt;/h4&gt;");
+            builder.CloseElement();
+        }
+    }
+}</pre>
+
+<p>Import points:</p>
+
+<ol>
+    <li>There's one Parameter - the Child Content.</li>	
+    <li>When an instance of the class initializes, it builds a <code>RenderFragment</code> in <code>_componentRenderFragment</code>.  This doesn't get executed by the object during initialization, only when the Renderer executes it when queued in the <code>RenderQueue</code>.</li>	
+    <li>When <code>SetParametersAsync</code> is called, any relevant parameters are applied to the class properties, and <code>_componentRenderFragment</code> is queued into the renderer's <code>RenderQueue</code> through the <code>RenderHandle</code>.</li>	
+    <li>Updating child content is not handled by the component - calling <code>StateHasChanged</code> queues the component's render fragment on the <code>RenderQueue</code>.  The renderer calls <code>SetParametersAsync</code>&nbsp;on any components with parameter changes.&nbsp; Components are responsible for queueing their updated renderfragments.</li>	
+    <li>There's no <code>OnInitialized</code>, <code>OnAfterRender</code>, <code>StateHasChanged</code>... These are all part of the <code>ComponentBase</code> implementation not <code>IComponent</code>.</li></ol>
+
+<h3 id="routed-components">Routed Components/Views</h3>
+
+<p>Everything's a component, but not all components are equal. <strong>Routed Components </strong>&nbsp;or what I call <strong>Views</strong> are a little special.</p>
+
+<p>They contain one or more <code>@page</code> routing directives and optionally an <code>@Layout</code> directive.</p>
+
+<pre lang="html" data-lang-orig="html">@page "/WeatherForecast"
+@page "/WeatherForecasts"
+
+@layout MainLayout</pre>
+
+<p>The router builds a list of all routed components in the Server Application along with the routes advertised though <code>@page</code>. When a new route is requested by the Navigation Manager, the router looks up the appropriate routed component. The component is loaded by the <code>RouterView</code> component in <code>App.razor</code> using either the explicitly specified Layout or the default Layout defined in <code>App.razor</code>. This triggers a refresh of the rendertree and thus a DOM refresh. The new "Page" gets displayed.</p>
+
+<p>Don't think of routed components as pages. It seems obvious to do so, but don't. If you do, you'll attribute lots of page properties to routed components that don't apply.&nbsp; And then get confused when routed components don't behave like a page! I've been as guilt as any, I'm trying to replace the word "page" in my libraries with "route".</p>
+
+<h3>ComponentBase</h3>
+
+<p><code>ComponentBase</code> is the core Blazor implementation of <code>IComponent</code>. All <em>.razor</em> files inherit from it by default. But, please - <strong>nota&nbsp;bene</strong> - <code>ComponentBase</code> is just one implementation of the <code>IComponent</code> interface. It doesn't define a component.&nbsp;&nbsp;<code>OnInitialized</code> is not a component lifecycle method, it's a <code>ComponentBase</code> lifecycle method. The simple <code>IComponent</code> implementation above has no connection with <code>ComponentBase</code>.</p>
+
+<h3>ComponentBase Lifecycle and Events</h3>
+
+<p>There are plenty of articles and information on the web regurgitating the same basic lifecycle information. I'm going to concentrate here on certain often misunderstood aspects of the lifecycle.</p>
+
+<p>We need to consider four events in a component lifecycle:</p>
+
+<ol>
+	<li>Initialization of the component.</li>	<li>Component parameter changes.</li>	<li>Component events.</li>	<li>Component disposal.</li></ol>
+
+<p>There are six exposed Events/Methods in <code>ComponentBase</code> along with the async equivalents:</p>
+
+<ol>
+	<li><code>SetParametersAsync</code></li>	<li><code>OnInitialized</code> and <code>OnInitializedAsync</code></li>	<li><code>OnParametersSet</code> and <code>OnParametersSetAsync</code></li>	<li><code>OnAfterRender</code> and <code>OnAfterRenderAsync</code></li>	<li><code>Dispose</code> - if <code>IDisposable</code> is implemented</li>	<li><code>StateHasChanged</code></li></ol>
+
+<p>Don't forget we have the standard class initialization method - this builds a <code>RenderFragment</code> that's run by the <code>Renderer</code> whenever it's queued. It sets the two <code>private</code> class variables to <code>false</code> (to mark it's being run) and runs <code>BuildRenderTree</code>.</p>
+
+<pre lang="cs" data-lang-orig="cs">public ComponentBase()
+{
+    _renderFragment = builder =&gt;
+    {
+    _hasPendingQueuedRender = false;
+    _hasNeverRendered = false;
+        BuildRenderTree(builder);
+    };
+}</pre>
+
+<p><code>SetParametersAsync</code> is the top level method. It sets the properties for the submitted parameters and then runs <code>RunInitAndSetParametersAsync</code> - and thus <code>OnInitialized</code> and <code>OnInitializedAsync</code> - on initialization. Either way, the final call is to <code>CallOnParametersSetAsync</code>. Note that <code>CallOnParametersSetAsync</code> waits on <code>OnInitializedAsync</code> to complete before calling <code>CallOnParametersSetAsync</code>.</p>
+
+<pre lang="cs" data-lang-orig="cs">public virtual Task SetParametersAsync(ParameterView parameters)
+{
+    parameters.SetParameterProperties(this);
+    if (!_initialized)
+    {
+        _initialized = true;
+    return RunInitAndSetParametersAsync();
+    }
+    else return CallOnParametersSetAsync();
+}
+
+private async Task RunInitAndSetParametersAsync()
+{
+    OnInitialized();
+    var task = OnInitializedAsync();
+    if (task.Status != TaskStatus.RanToCompletion &amp;&amp; task.Status != TaskStatus.Canceled)
+    {
+        StateHasChanged();
+    try { await task;}
+    catch { if (!task.IsCanceled) throw; }
+    }
+    await CallOnParametersSetAsync();</pre>
+
+<p><code>CallOnParametersSetAsync</code> calls <code>OnParametersSet</code> and <code>OnParametersSetAsync</code>, followed by <code>StateHasChanged</code>. If <code>OnParametersSetAsync()</code> needs awaiting, it awaits and after completion re-runs <code>StateHasChanged</code>.</p>
+
+<pre lang="cs" data-lang-orig="cs">private Task CallOnParametersSetAsync()
+{
+    OnParametersSet();
+    var task = OnParametersSetAsync();
+    var shouldAwaitTask = task.Status != TaskStatus.RanToCompletion &amp;&amp;
+    task.Status != TaskStatus.Canceled;
+
+    StateHasChanged();
+
+    return shouldAwaitTask ?
+        CallStateHasChangedOnAsyncCompletion(task) :
+    Task.CompletedTask;
+}
+
+private async Task CallStateHasChangedOnAsyncCompletion(Task task)
+{
+    try { await task; }
+    catch 
+    {
+    if (task.IsCanceled) return;
+    throw;
+    }
+    StateHasChanged();
+}</pre>
+
+<p>Lastly, let's look at <code>StateHasChanged</code>. If a render is pending, i.e. the renderer hasn't yet run&nbsp;the queued render request, it closes - everything will be captured in the queued render event. If not, it sets <code>_hasPendingQueuedRender</code> and calls the <code>Render</code> method on the <code>RenderHandle</code>. This queues <code>_renderFragement</code> into the Renderer's <code>RenderQueue</code>. When the queue runs <code>_renderFragment</code> it sets the two class flags to <code>false</code> and runs <code>BuildRenderTree</code>.</p>
+
+<pre lang="cs" data-lang-orig="cs">protected void StateHasChanged()
+{
+    if (_hasPendingQueuedRender) return;
+    if (_hasNeverRendered || ShouldRender())
+    {
+        _hasPendingQueuedRender = true;
+    try { _renderHandle.Render(_renderFragment);}
+    catch {
+            _hasPendingQueuedRender = false;
+    throw;
+        }
+    }
+}</pre>
+
+<p>Some key points to note:</p>
+
+<ol>
+	<li>	<p><code>OnInitialized</code> and <code>OnInitializedAsync</code> are only called during initialization. They are overused. The only code that belongs in them is stuff that never changes after the initial load event.</p>
+	</li>	<li>	<p><code>OnParametersSet</code> and <code>OnParametersSetAsync</code> are called whenever the parent component makes changes to the parameter set for the component or a captured cascaded parameters change. Any code that needs to respond to parameter changes lives here.</p>
+	</li>	<li>	<p>Component rendering (either through the markupcode or <code>BuildRenderTree</code>) happens: after the <code>OnParametersSet</code> events either on initialization or a parameter change; and after an Event Callback occurs (such as responding to a mouse or keyboard event).</p>
+	</li>	<li>	<p><code>OnAfterRender</code> and <code>OnAfterRenderAsync</code> occur at the end of all four events. <code>firstRender</code> is only true on component initialization.</p>
+	</li>	<li>	<p><code>StateHasChanged</code> is called automatically: after the Initialized events; after <code>OnParametersSet</code> events; and after any event callback. You don't need to call it separately.</p>
+	</li></ol>
+
+<h4>The Renderer</h4>
+
+<p>The inner workings of the Renderer are beyond the scope of this article. However, an overview of what happens when a RenderQueue request gets executed is very relevant:</p>
+
+<ol>
+	<li>The RenderFragment passed is run. This normally re-renders the component.</li>	<li>The Renderer checks for Parameter changes that need to be passed on to other components. It calls <code>SetParametersAsync</code> on affected components, passing the changes in a <code>ParameterView</code> object.</li></ol>
+
+<p>The second point is important, because it governs what gets updating - and not updated - in parameter linked components.  Updating a property in a component that is linked to a child components Parameter will automatically cause a <code>SetParametersAsync</code> event on the child component with the updated property value passed to the child component. This only works with changes down the component tree.  Changes aren't propagated up the RenderTree or traverse the RenderTree.  If you want cross component updating, you need to use events.</p>
+
+<p>It's also important to understand what doesn't happen. Existing sub-components - components in ChildContent - don't automatically get re-rendered when the parent is re-rendered.&nbsp;&nbsp;They must have a parameter linkage to trigger <code>SetParametersAsync</code>.&nbsp; New components, added by code in existing components, get initialized, and thus&nbsp;<code>SetParametersAsync</code> is run as part of that process.</p>
+
+<h3 id="building-components">Building Components</h3>
+
+<p>Components can be defined in three ways:</p>
+
+<ol>
+	<li>As a <em>.razor</em> file with an code inside an <code>@code</code> block.</li>	<li>As a <em>.razor</em> file and a code behind <em>.razor.cs</em> file.</li>	<li>As a pure <em>.cs</em> class file inheriting from <code>ComponentBase</code> or a <code>ComponentBase</code> inherited class, or implementing <code>IComponent</code>.</li></ol>
+
+<h4 id="all-in-one-razor-file">All in One Razor File</h4>
+
+<h5>HelloWorld.razor</h5>
+
+<pre lang="html" data-lang-orig="html">&lt;div&gt;
+@HelloWorld
+&lt;/div&gt;
+
+@code {
+[Parameter]
+public string HelloWorld {get; set;} = "Hello?";
+}</pre>
+
+<h4 id="code-behind">Code Behind</h4>
+
+<h5>HelloWorld.razor</h5>
+
+<pre lang="html" data-lang-orig="html">@inherits ComponentBase
+@namespace CEC.Blazor.Server.Pages
+
+&lt;div&gt;
+@HelloWorld
+&lt;/div&gt;</pre>
+
+<h5>HelloWorld.razor.cs</h5>
+
+<pre lang="cs" data-lang-orig="cs">namespace CEC.Blazor.Server.Pages
+{
+    public partial class HelloWorld : ComponentBase
+    {
+    [Parameter]
+    public string HelloWorld {get; set;} = "Hello?";
+    }
+}</pre>
+
+<h4 id="c-class">C# Class</h4>
+
+<h5>HelloWorld.cs</h5>
+
+<pre lang="cs" data-lang-orig="cs">namespace CEC.Blazor.Server.Pages
+{
+    public class HelloWorld : ComponentBase
+    {
+        [Parameter]
+        public string HelloWorld {get; set;} = "Hello?";
+
+        protected override void BuildRenderTree(RenderTreeBuilder builder)
+        {
+            builder.OpenElement(0, "div");
+            builder.AddContent(1, (MarkupString)this._Content);
+            builder.CloseElement();
+        }
+    }
+}</pre>
+
+<h2>Conclusions and Points of Interest</h2>
+
+<ol>
+	<li>	<p>The best source of information on Blazor is <a href="https://docs.microsoft.com/en-us/aspnet/core/blazor/">the Microsoft Documents Site</a>. Most articles regurgitate this document set!</p>
+	</li>	<li>	<p>Be clear about what's going on in a Blazor Application. It's very easy to become confused about where code is running and when.</p>
+	</li>	<li>	<p>The is no difference between a Server and WASM components.&nbsp; A normal component can run in either.</p>
+	</li>	<li>	<p>There's a tendency to pile all the component code into <code>OnInitialized</code> and <code>OnInitializedAsync</code> and then use events to drive <code>StateHasChanged</code> updates in the component tree. Getting the relevant code into the right places in the lifecycle will remove most of the repeated calls to <code>StateHasChanged</code>.</p>
+	</li>	<li>	<p>As a follow on from the point above, <code>StateHasChanged</code> is triggered far to often, and in the wrong circumstances. When to call <code>StateHasChanged</code> and what triggers re-rendering can seem a bit of a dark art. Make sure you get a firm grasp of what's going on, it will save writing a lot of event driven code and exploration of dark holes.</p>
+	</li>	<li>	<p>Components are underused in the UI. The same code/markup blocks are used repeatedly and could be encapsulated in a component. The same rules apply to code/markup blocks as to C# code. There's another article coming on the subject.</p>
+	</li>	<li>	<p>The description of the Blazor Hub processes and the <code>Renderer</code> class are an oversimplification of reality. I've simplified it to help readers get a broad understanding, without overcomplicating the article.</p>
+	</li>	<li>	<p>Don't confuse <code>IComponent</code> and <code>ComponentBase</code>. Most people do.</p>
+	</li>	<li>	<p>While components expose both <code>Sync</code> and <code>Async</code> methods and events, stick to the adage <strong>"Async All The Way"</strong>. <a href="https://www.codeproject.com/Articles/5276310/Understanding-and-Using-Async-Programming-in-DotNe">There's an article here on Async Programming in Blazor</a>.</p>
+	</li></ol>
+
+<h2>History</h2>
+
+<ul>
+	<li>25<sup>th</sup> August, 2020: Initial version</li>
+	<li>11<sup>th</sup> November, 2020: Updates to various sections</li></ul>
+
+</div>
+<!-- End Article -->
+
+
+
+
+</div> 
+</body>
+</html>
