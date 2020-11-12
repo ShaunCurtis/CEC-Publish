@@ -1,20 +1,36 @@
-# Building a Database Application in Blazor 
-## Part 2 - Services - Building the CRUD Data Layers
+# Part 2 - Services - Building the CRUD Data Layers
 
 This article is the second in a series on Building Blazor Projects: it describes techniques and methodologies for abstracting the data and business logic layers into boilerplate code in a library.
 
-See the [CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor) for the libraries and sample projects.
+1. [Project Structure and Framework](https://www.codeproject.com/Articles/5279560/Building-a-Database-Application-in-Blazor-Part-1-P)
+2. [Services - Building the CRUD Data Layers](https://www.codeproject.com/Articles/5279596/Building-a-Database-Application-in-Blazor-Part-2-S)
+3. [View Components - CRUD Edit and View Operations in the UI](https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C)
+4. [UI Components - Building HTML/CSS Controls](https://www.codeproject.com/Articles/5280090/Building-a-Database-Application-in-Blazor-Part-4-U)
+5. [View Components - CRUD List Operations in the UI](https://www.codeproject.com/Articles/5280391/Building-a-Database-Application-in-Blazor-Part-5-V)
+6. [A walk through detailing how to add weather stations and weather station data to the application](https://www.codeproject.com/Articles/5281000/Building-a-Database-Application-in-Blazor-Part-6-A)
 
-### Services
+## Repository and Database
 
-Blazor is built on DI [Dependency Injection] and IOC [Inversion of Control].  If your not familiar with these concepts, do a little [backgound reading](https://www.codeproject.com/Articles/5274732/Dependency-Injection-and-IoC-Containers-in-Csharp) before diving into Blazor.  You will save yourself time in the long run!
+[CEC.Blazor GitHub Repository](https://github.com/ShaunCurtis/CEC.Blazor)
+
+There's a SQL script in /SQL in the repository for building the database.
+
+[You can see the Server version of the project running here](https://cec-blazor-server.azurewebsites.net/).
+
+[You can see the WASM version of the project running here](https://cec-blazor-wasm.azurewebsites.net/).
+
+## Services
+
+Blazor is built on DI [Dependency Injection] and IOC [Inversion of Control].  If your not familiar with these concepts, do a little [backgound reading](https://www.codeproject.com/Articles/5274732/Dependency-Injection-and-IoC-Containers-in-Csharp) before diving into Blazor.  You'll save yourself time in the long run!
 
 Blazor Singleton and Transient services are relatively straight forward.  You can read more about them in the [Microsoft Documentation](https://docs.microsoft.com/en-us/aspnet/core/blazor/fundamentals/dependency-injection).  Scoped are a little more complicated.
 
 1. A scoped service object exists for the lifetime of a client application session - note client and not server.  Any application resets, such as F5 or navigation away from the application, resets all scoped services.  A duplicated tab in a browser creates a new application, and a new set of scoped services.
-2. A scoped service can be object scoped in code.  This is most common in a UI conponent.  The *OwningComponentBase* component class has functionality to restrict the life of a scoped service to the lifetime of the component. This will be discussed in further detail n the next article. 
+2. A scoped service can be scoped to an object in code.  This is most common in a UI conponent.  The *OwningComponentBase* component class has functionality to restrict the life of a scoped service to the lifetime of the component. This is covered in more detail in another article. 
 
-Services is the Blazor IOC [Inversion of Control] container.  In Server mode services are configured in *startup.cs*:
+Services is the Blazor IOC [Inversion of Control] container.
+
+In Server mode services are configured in *startup.cs*:
 
 ```c#
 // CEC.Blazor.Server/startup.cs
@@ -24,17 +40,17 @@ public void ConfigureServices(IServiceCollection services)
     services.AddServerSideBlazor();
     // the Services for the CEC.Blazor .
     services.AddCECBlazor();
-    // the Services for the CEC.Routing Library
-    services.AddCECRouting();
     // the local application Services defined in ServiceCollectionExtensions.cs
     services.AddApplicationServices(Configurtion);
 }
 ```
+
 ```c#
 // CEC.Blazor.Server/Extensions/ServiceCollectionExtensions.cs
 public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration configuration)
 {
     // Singleton service for the Server Side version of WeatherForecast Data Service 
+    //services.AddSingleton<IWeatherForecastDataService, WeatherForecastDummyDataService>();
     services.AddSingleton<IWeatherForecastDataService, WeatherForecastServerDataService>();
     // Scoped service for the WeatherForecast Controller Service
     services.AddScoped<WeatherForecastControllerService>();
@@ -58,13 +74,12 @@ public static async Task Main(string[] args)
     builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
     // the Services for the CEC.Blazor Library
     builder.Services.AddCECBlazor();
-    // the Services for the CEC.Routing Library
-    builder.Services.AddCECRouting();
     // the local application Services defined in ServiceCollectionExtensions.cs
     builder.Services.AddApplicationServices();
     .....
 }
 ```
+
 ```c#
 // CEC.Blazor.WASM.Client/Extensions/ServiceCollectionExtensions.cs
 public static IServiceCollection AddApplicationServices(this IServiceCollection services)
@@ -80,7 +95,7 @@ public static IServiceCollection AddApplicationServices(this IServiceCollection 
 ```
 Points:
 1. There's an *IServiceCollection* extension method for each project/library to encapsulate the specific services needed for the project.
-2. Only the data layer service is different.  The Server version, used by both the Blazor Server and the WASM API Server, interfaces with the database and Entitiy Framework.  It's scoped as a Singleton - as we are running async, DbContexts are created and closed per query.  The Client version uses *HttpClient* (which is a scoped service) to make calls to the API and is therefore itself scoped.
+2. Only the data layer service is different.  The Server version, used by both the Blazor Server and the WASM API Server, interfaces with the database and Entitiy Framework.  It's scoped as a Singleton - as we are running async, DbContexts are created and closed per query.  The Client version uses *HttpClient* (which is a scoped service) to make calls to the API and is therefore itself scoped.  There's also a dummy data service to emulate the database.
 3. A code factory is used to build the specific DBContext, and provide the necessary level of abstraction for boilerplating the core data service code in the base library.
 
 ### Generics
@@ -432,7 +447,7 @@ public class WeatherForecastServerDataService :
 
 ### The Business Logic/Controller Service Tier
 
-Controllers are normally configured as Scoped Services and then further restricted using OwningComponentBase in the UI when needed.
+Controllers are normally configured as Scoped Services.
 
 The controller tier interface and base class are generic and reside in the CEC.Blazor library.  Two interfaces *IControllerService* and *IControllerPagingService* define the required functionality.  Both are implemented in the BaseControllerService class.  
 
@@ -528,6 +543,6 @@ This article demonstrates how to abstract the data and controller tier code into
 Some key points to note:
 1. Aysnc code is used wherever possible.  The data access functions are all async.
 2. Generics make much of the boilerplating possible.  They create complexity, but are worth the effort.
-3. The use of Interfaces for Dependancy Injection and UI boilerplating.
+3. Interfaces are crucial for Dependancy Injection and UI boilerplating.
 
-The next section looks at the Presentation Layer / UI framework.
+The next section looks at the [Presentation Layer / UI Framework](https://www.codeproject.com/Articles/5279963/Building-a-Database-Application-in-Blazor-Part-3-C).
