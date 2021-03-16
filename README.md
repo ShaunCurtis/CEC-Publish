@@ -1,13 +1,21 @@
 ---
 title: The Blazor EditFormState Control
-date: 2020-10-23
+date: 2021-03-10
+oneliner: A Blazor control to manage and monitor edit state in a form.
+precis: The first article in a series looking at how to build Blazor edit forms/controls with state management, validation and form locking.  This article focuses on edit state.
+published: 2021-03-10
 ---
 
 # The Blazor EditFormState Control
 
+Publish Date: 2021-03-10
+Last Updated: 2021-03-15
+
 ## Overview
 
-This is the first in a series of articles describing a set of useful Blazor Edit controls that solve some current shortcomings in the out-of-the-box edit experience without buying into some expensive toolkits.
+This is the first in a series of articles describing a set of useful Blazor Edit controls that solve some of the current shortcomings in the out-of-the-box edit experience without the need to buy expensive toolkits.
+
+![EditForm](https://shauncurtis.github.io/siteimages/Articles/Editor-Controls/EditFormState.png)
 
 ## Code and Examples
 
@@ -15,11 +23,13 @@ The repository contains a project that implements the controls for all the artic
 
 The example site is here [https://cec-blazor-database.azurewebsites.net/](https://cec-blazor-database.azurewebsites.net/).
 
-> It's still a Work In Progress for future articles so will change and develop.
+You can see the test form described later at [https://cec-blazor-database.azurewebsites.net//testeditor](https://cec-blazor-database.azurewebsites.net//testeditor).
+
+> The Repo is a Work In Progress for future articles so will change and develop.
 
 ## The Blazor Edit Setting
 
-To begin lets look at the current form controls and how they work together.  A classic form looks something like this:
+To begin, let's look at the current form controls and how they work together.  A classic form looks something like this:
 
 ```html
 <EditForm Model="@exampleModel" OnValidSubmit="@HandleValidSubmit">
@@ -40,22 +50,22 @@ To begin lets look at the current form controls and how they work together.  A c
 1. Creates the html `Form` context.
 2. Hooks up any `Submit` buttons - i.e. buttons with their `type` set to `submit` within the form.
 3. Creates/manages the `EditContext`.
-4. Cascades the `EditContext`.  All the controls within `EditForm` capture and use it in one shape or form.
-4. Provides callback delegates for the submission process - `OnValidSubmit`, `OnSubmit` and `OnInvalidSubmit` -  for the parent control wiring.
+4. Cascades the `EditContext`.  All controls within `EditForm` capture and use it in one way or another.
+4. Provides callback delegates to the parent control for the submission process - `OnSubmit`, `OnValidSubmit` and `OnInvalidSubmit`.
 
 #### EditContext
 
-`EditContext` is the class at the heart of the edit process, providing overall management.  It's created from a `model`: a standard `object`.  It can be any class, but in practice it'll be a data class of some type.  The only pre-requisite is that fields used in the form are declared as public read/write properties.
+`EditContext` is the class at the heart of the edit process, providing overall management.  The data class it operates on is the `model`: defined as an `object` type.  It can be any object, but in practice will be a data class of some type.  The only pre-requisite is that fields used in the form are declared as public read/write properties.
 
-The `EditContext` cascaded by `EditForm` is either:
+The `EditContext` is either:
  - passed directly to `EditForm` as the `EditContext` parameter,
- - or the model is passed as the `Model` parameter and `EditForm` creates a `EditContext` instance from it.
+ - or the object instance of the model is set as the `Model` parameter and `EditForm` creates an `EditContext` instance from it.
 
-An important point to make here is you shouldn't change out the EditContext model for another object once you've created it.  While it may be possible, DON'T.  To change out the model, code to refresh the whole form: better safe than ...!
+An important point to remember is don't change out the EditContext model for another object once you've created it.  While it may be possible, it's not advisable.  If the model needs to be changed out, code to refresh the whole form: better safe than ...!
 
 #### FieldIdentifier
 
-A `FieldIdentifier` is a partial "serialization" of a model property.  It's how `EditContext` identifies and tracks individual properties.  `Model` is the class instance that owns the property and `FieldName` is the property name obtained through reflection.
+The `FieldIdentifier` class represents a partial "serialization" of a model property.  The `EditContext` tracks and identifies individual properties throughj their `FieldIdentifier`.  `Model` is the object that owns the property and `FieldName` is the property name obtained through reflection.
 
 #### Input Controls
 
@@ -63,39 +73,28 @@ A `FieldIdentifier` is a partial "serialization" of a model property.  It's how 
 
 #### EditContext Revisited
 
-The `EditContext` maintains a list of `FieldIdentifier`s internally.  The `FieldIdentifier` provided in calls to `NotifyFieldChanged` is logged to the list.  `EditContext` triggers `OnFieldChanged` whenever `NotifyFieldChanged` is called.
+The `EditContext` maintains a `FieldIdentifier` list internally.  `FieldIdentifier` objects are passed around in various methods and events to identify specific fields.  Calls to `NotifyFieldChanged` add `FieldIdentifier` objects to the list.  `EditContext` triggers `OnFieldChanged` whenever `NotifyFieldChanged` is called.
 
-You can check the modification state of the EditContext at any time by calling `IsModified` which checks the `FieldIdentifier` collection for any logged field changes. `MarkAsUnmodified` lets you reset an individual `FieldIdentifier` or all the `FieldIdentifiers` in the collection.
+`IsModified` provides access to the state of the list or an individual `FieldIdentifier`. `MarkAsUnmodified` resets an individual `FieldIdentifier` or all the `FieldIdentifiers` in the collection.
 
-`EditContext` also contains the functionality to manage validation, but not actually do it.  When a user clicks on a submit button, `EditForm` does one of two actions:
-
-1. If a delegate is registered with `OnSubmit`, it triggers it.  This ignores validation.
-2. If no `OnSubmit` delegate is registered, it runs any registered validation by calling `EditContext.Validate` and then either triggers `OnValidSubmit` or `OnInvalidSubmit` depending on the result.
-
-`EditContext.Validate` fires `OnValidationRequested` synchronously (if there's a delegate registered) and then checks if there are any messages in the `ValidationMessageStore`.  If it's empty, the form passed validation.  
-
-Validators are wired to this event to handle validation.   There's no `interface` to conform to, Validators just need to be wired into `OnValidationRequested` and interact with the `ValidationMessageStore` of `EditContext`. It validates whatever it's configured to validate, and logs any error messages to the `ValidationMessageStore`.  Finally it calls `NotifyValidationStateChanged` on `EditContext`. This triggers `OnValidationStateChanged`.
-
-#### Validation Controls
-
-Controls such as `ValidationMessage` and `ValidationSummary` capture the cascaded `EditContext` and wire into the `OnValidationStateChanged` to manage and display their messages.
+`EditContext` also contains the functionality to manage validation, but not actually do it.  We'll look at the validation process in the next article.  
 
 ## EditFormState Control
 
-The `EditFormState` control, like the input controls, is wired into the cascaded `EditState`.  What it does is:
+The `EditFormState` control, like all edit form controls, captures the cascaded `EditState`.  What it does is:
 
-1. Builds a list of public properties exposed by the `Model` and maintains the edit state on each - a comparison of the original value with the edited value.
+1. Builds a list of public properties exposed by the `Model` and maintains the edit state of each - an equality check of the original value against the edited value.
 2. Updates the state on each change in a field value.
 3. Exposes the state through a readonly property.
-4. Calls an EventCallback delegate whenever the edit state is updated.
+4. Provides a EventCallback delegate which is triggered whenever the edit state is updated.
 
-Before we look at the control let's look at the Model - `WeatherForecast` - and some of the supporting classes.
+Before we look at the control let's look at the Model - in our case `WeatherForecast` - and some of the supporting classes.
 
 ### WeatherForecast
 
 `WeatherForecast` is a typical data class.  
 1. Each field is declared as a property with default values.
-2. `Validate` implements `IValidation`.  Ignore this for the moment we'll look at validation in subsequent article.  I've shown it as you'll see it in the Repo code.
+2. `Validate` implements `IValidation`.  Ignore this for the moment we'll look at validation in the next article.  I've shown it as you'll see it in the Repo code.
 
 
 ```csharp
@@ -117,11 +116,11 @@ public class WeatherForecast : IValidation
 
 ### EditField
 
-`EditField` is our class for "serialization" of properties from the model.
+`EditField` is our class for "serializing" out properties from the model.
 
-1. The base fields are records - they can only be set on initialization.
+1. The base fields are *records* - they can only be set on initialization.
 2. `EditedValue` carries the current value of the field.
-3. `IsDirty` is used to test if the field is dirty.
+3. `IsDirty` tests equality between `Value` and `EditedValue`.
 
 ```csharp
 public class EditField
@@ -157,7 +156,7 @@ public class EditField
 
 ### EditFieldCollection
 
-`EditFieldCollection` is an `IEnumerable` collection of `EditField`s.  The class provides a set of controlled setters and getters for the collection and implments the necessary methods for the `IEnumerable` interface.
+`EditFieldCollection` is an `IEnumerable` collection of `EditField`.  The class provides a set of controlled setters and getters for the collection and implements the necessary methods for the `IEnumerable` interface.  It also provides an `IsDirty` property to expose the state of the collection.
 
 ```csharp
     public class EditFieldCollection : IEnumerable
@@ -271,9 +270,11 @@ The `Enumerator` support class.
     }
 ```
 
+Now we've seen the support classes, On to the main control.
+
 ### EditFormState
 
-The main control is declared as a component and implements `IDisposable`.
+`EditFormState` is declared as a component and implements `IDisposable`.
 
 ```csharp
 public class EditFormState : ComponentBase, IDisposable
@@ -281,10 +282,9 @@ public class EditFormState : ComponentBase, IDisposable
 
 The properties are:
 1. Pick up the `EditContext` from the cascade.
-2. Provide a `EditStateChanged` callback as an pseudo event to the parent control to tell it the edit state has changed.
-3. Provide a `Reset` Parameter that the parent can use to tell the control to clear/reset it's state to clean.
-4. Provide a readonly Property `IsDirty` for any controls that have a `@ref` to check the control state.
-5. `EditFields` is the internal edit field collection we populate and use to manage the state.
+2. Provide a `EditStateChanged` callback to the parent control to tell it the edit state has changed.
+4. Provide a readonly Property `IsDirty` for controls using `@ref` to check the control state.
+5. `EditFields` is the internal `EditFieldCollection` we populate and use to manage the edit state.
 6. `disposedValue` is part of the `IDisposable` implementation.
 
 ```csharp
@@ -295,47 +295,45 @@ The properties are:
         /// passes the the current Dirty state
         [Parameter] public EventCallback<bool> EditStateChanged { get; set; }
 
-        /// Pseudo Property to force the control to do a state and validation
-        [Parameter]
-        public bool Reset
-        {
-            get => false;
-            set
-            {
-                if (value) this.Clear();
-            }
-        }
-
         /// Property to expose the Edit/Dirty state of the control
         public bool IsDirty => EditFields?.IsDirty ?? false;
 
         private EditFieldCollection EditFields = new EditFieldCollection();
         private bool disposedValue;
 ```
-When the component is initialized we get the model and capture all the model properties and populate the `EditFields` collection with our initial data.  Finally we wire up to `EditContext.OnFieldChanged` to handle any data changes the user makes.
+
+When the component initializes it captures the `Model` properties and populates `EditFields` with the initial data.  The last step is to wire up to `EditContext.OnFieldChanged` to `FieldChanged`, so `FieldChanged` gets called whenever a field value changes.
 
 ```csharp
-        protected override Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
+    {
+        Debug.Assert(this.EditContext != null);
+        if (this.EditContext != null)
         {
-            Debug.Assert(this.EditContext != null);
-            if (this.EditContext != null)
-            {
-                // Gets the model from the EditContext and populates the EditFieldCollection
-                var model = this.EditContext.Model;
-                var props = model.GetType().GetProperties();
-                foreach (var prop in props)
-                {
-                    var value = prop.GetValue(model);
-                    EditFields.AddField(model, prop.Name, value);
-                }
-                // Wires up to the EditContext OnFieldChanged event
-                this.EditContext.OnFieldChanged += FieldChanged;
-            }
-            return Task.CompletedTask;
+            // Populates the EditField Collection
+            this.GetEditFields();
+            // Wires up to the EditContext OnFieldChanged event
+            this.EditContext.OnFieldChanged += FieldChanged;
         }
+        return Task.CompletedTask;
+    }
 
+    /// Method to populate the edit field collection
+    protected void GetEditFields()
+    {
+        // Gets the model from the EditContext and populates the EditFieldCollection
+        this.EditFields.Clear();
+        var model = this.EditContext.Model;
+        var props = model.GetType().GetProperties();
+        foreach (var prop in props)
+        {
+            var value = prop.GetValue(model);
+            EditFields.AddField(model, prop.Name, value);
+        }
+    }
 ```
-The `FieldChanged` event handler looks up the `EditField` from the `EditFields` collection and sets its `EditedValue` through `SetField` to the new value.  It then triggers the `EditStateChanged` callback.  This will normally be wired up by the main edit form so it can take whatever action it needs when the editstate is dirty.  We'll see that in action in a subsequent article.
+
+The `FieldChanged` event handler looks up the `EditField` from `EditFields` and sets its `EditedValue` by calling `SetField`.  It then triggers the `EditStateChanged` callback, with the current dirty state.
 
 ```csharp
         /// Event Handler for Editcontext.OnFieldChanged
@@ -354,53 +352,57 @@ The `FieldChanged` event handler looks up the `EditField` from the `EditFields` 
                 this.EditStateChanged.InvokeAsync(EditFields?.IsDirty ?? false);
             }
         }
-
 ```
 
 Finally we have some utility methods and `IDisposable` implementation.
 
 ```csharp
-        /// Method to clear the Validation and Edit State 
-        public void Clear()
-            => this.EditFields.ResetValues();
+    /// Method to Update the Edit State to current values 
+    public void UpdateState()
+    {
+        this.GetEditFields();
+        this.EditStateChanged.InvokeAsync(EditFields?.IsDirty ?? false);
+    }
 
-        // IDisposable Implementation
-        protected virtual void Dispose(bool disposing)
+    // IDisposable Implementation
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!disposedValue)
         {
-            if (!disposedValue)
+            if (disposing)
             {
-                if (disposing)
-                {
-                    if (this.EditContext != null)
-                        this.EditContext.OnFieldChanged -= this.FieldChanged;
-                }
-                disposedValue = true;
+                if (this.EditContext != null)
+                    this.EditContext.OnFieldChanged -= this.FieldChanged;
             }
-        }
-
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
+            disposedValue = true;
         }
     }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+}
 ```
 
 ## A Simple Implementation
 
-![EditForm](../Images/Articles/Editor-Controls/EditformState.png)
+To test the component, here's a simple test page.
 
-To test the component, here's a simple implementation test page.
+![EditForm](https://shauncurtis.github.io/siteimages/Articles/Editor-Controls/EditFormState.png)
 
 Change the temperature up and down and you should see the State button change colour and Text.
+
+You can see this example in action at [https://cec-blazor-database.azurewebsites.net/editstateeditor](https://cec-blazor-database.azurewebsites.net/editstateeditor).
 
 ```html
 @using Blazor.Database.Data
 @page "/test"
 
 <EditForm Model="@Model" OnValidSubmit="@HandleValidSubmit">
-    <EditFormState EditStateChanged="this.EditStateChanged"></EditFormState>
+    <EditFormState @ref="editFormState" EditStateChanged="this.EditStateChanged"></EditFormState>
 
     <label class="form-label">ID:</label> <InputNumber class="form-control" @bind-Value="Model.ID" />
     <label class="form-label">Date:</label> <InputDate class="form-control" @bind-Value="Model.Date" />
@@ -422,6 +424,7 @@ Change the temperature up and down and you should see the State button change co
     protected bool _isDirty = false;
     protected string btncolour => _isDirty ? "btn-danger" : "btn-success";
     protected string btntext => _isDirty ? "Dirty" : "Clean";
+    protected EditFormState editFormState { get; set; }
 
     private WeatherForecast Model = new WeatherForecast()
     {
@@ -431,7 +434,10 @@ Change the temperature up and down and you should see the State button change co
         Summary = "Balmy"
     };
 
-    private void HandleValidSubmit() { }
+    private void HandleValidSubmit()
+    {
+        this.editFormState.UpdateState();
+    }
 
     private void EditStateChanged(bool editstate)
         => this._isDirty = editstate;
@@ -440,4 +446,7 @@ Change the temperature up and down and you should see the State button change co
 
 ## Wrap Up
 
-While the real benefits of this control may not be immediately obvious if you haven't had to implement such functionality before, we will use this control in the following articles to build a production level editor form.  The next article will look at how to use this control to lock out the form and prevent navigation when the form is dirty.
+While the real benefits of this control may not be immediately obvious if you haven't implementede such functionality before, we'll use it in the follow on articles to build an editor form.  The next article looks at the validation process and how to build a simple custom validator. The third article looks at form locking, using this control as part of the process.
+
+If you've found this article well into the future, the latest version will be available [here](https://shauncurtis.github.io/articles/EditFormState.html)
+
