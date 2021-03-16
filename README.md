@@ -1,21 +1,23 @@
 ---
-title: The Blazor EditFormState Control
-date: 2021-03-10
-oneliner: A Blazor control to manage and monitor edit state in a form.
-precis: The first article in a series looking at how to build Blazor edit forms/controls with state management, validation and form locking.  This article focuses on edit state.
-published: 2021-03-10
+title: A Blazor Validation Control
+oneliner: A Blazor validation control to manage and monitor validation state in a form.
+precis: The second article in a series looking at how to build Blazor edit forms/controls with state management, validation and form locking.  This article focuses on validation state.
+date: 2021-03-11
+published: 2021-03-16
 ---
 
-# The Blazor EditFormState Control
+# The Blazor ValidationFormState Control
 
-Publish Date: 2021-03-10
-Last Updated: 2021-03-15
+published: 2021-03-11
+Last Update: 2021-03-16
 
 ## Overview
 
-This is the first in a series of articles describing a set of useful Blazor Edit controls that solve some of the current shortcomings in the out-of-the-box edit experience without the need to buy expensive toolkits.
+This is the second in a series of articles describing a set of useful Blazor Edit controls that solve some of the current shortcomings in the out-of-the-box edit experience without the need to buy expensive toolkits.
 
-![EditForm](https://shauncurtis.github.io/siteimages/Articles/Editor-Controls/EditFormState.png)
+This article covers how form validation works and shows how to build a relatively simple but fully featured validation system from scratch. Once the basic structure and classes are defined, it's easy to write additional validation chain methods for any new validation requirement or validator for a custom class.
+
+![EditForm](https://shauncurtis.github.io/siteimages/Articles/Editor-Controls/ValidationFormState.png)
 
 ## Code and Examples
 
@@ -23,13 +25,13 @@ The repository contains a project that implements the controls for all the artic
 
 The example site is here [https://cec-blazor-database.azurewebsites.net/](https://cec-blazor-database.azurewebsites.net/).
 
-You can see the test form described later at [https://cec-blazor-database.azurewebsites.net//testeditor](https://cec-blazor-database.azurewebsites.net//testeditor).
+The example form described at this end of this article can be seen at [https://cec-blazor-database.azurewebsites.net//validationeditor](https://cec-blazor-database.azurewebsites.net//validationeditor).
 
 > The Repo is a Work In Progress for future articles so will change and develop.
 
 ## The Blazor Edit Setting
 
-To begin, let's look at the current form controls and how they work together.  A classic form looks something like this:
+To begin lets look at the out-of-the-box form controls and how validation works.  A classic form looks something like this:
 
 ```html
 <EditForm Model="@exampleModel" OnValidSubmit="@HandleValidSubmit">
@@ -43,59 +45,177 @@ To begin, let's look at the current form controls and how they work together.  A
 </EditForm>
 ```
 
-#### EditForm
+The first article describes the basic interacts of `EditForm` and `EditContext` so we'll skip that and concentrate on the validation process.
 
-`EditForm` is the overall wrapper. It:
+When the user clicks on the *Submit* button, `EditForm` either:
+1. If a delegate is registered with `OnSubmit`, it triggers it and ignores validation.
+2. If there's no `OnSubmit` delegate, it calls `EditContext.Validate`.  Depending on the result either triggers `OnValidSubmit` or `OnInvalidSubmit`.
 
-1. Creates the html `Form` context.
-2. Hooks up any `Submit` buttons - i.e. buttons with their `type` set to `submit` within the form.
-3. Creates/manages the `EditContext`.
-4. Cascades the `EditContext`.  All controls within `EditForm` capture and use it in one way or another.
-4. Provides callback delegates to the parent control for the submission process - `OnSubmit`, `OnValidSubmit` and `OnInvalidSubmit`.
+`EditContext.Validate` checks if there's a delagate registered for `OnValidationRequested` and if so runs it synchronously.  Once complete it checks if there are any messages in the `ValidationMessageStore`.  If it's empty, the form passes validation and `OnValidSubmit` is invoked, otherwise `OnInvalidSubmit` is invoked.  
 
-#### EditContext
+ A Validator is a form component with no emitted markup.  It's placed within `EditForm` and captures the cascaded `EditContext`.  On initialization it registers an event handler with `EditContext.OnValidationRequested` to trigger validation.  On validation, the validator does whatever it's coded to do, logs validation failure messages to the `EditContext` `ValidationMessageStore` and finally calls `EditContext.NotifyValidationStateChanged` which triggers `EditContext.OnValidationStateChanged`.
 
-`EditContext` is the class at the heart of the edit process, providing overall management.  The data class it operates on is the `model`: defined as an `object` type.  It can be any object, but in practice will be a data class of some type.  The only pre-requisite is that fields used in the form are declared as public read/write properties.
+#### Validation Controls
 
-The `EditContext` is either:
- - passed directly to `EditForm` as the `EditContext` parameter,
- - or the object instance of the model is set as the `Model` parameter and `EditForm` creates an `EditContext` instance from it.
+Controls such as `ValidationMessage` and `ValidationSummary` capture the cascaded `EditContext` and register event handlers on `EditContext.OnValidationStateChanged`.  When triggered they check for any relevant messages and display them.
 
-An important point to remember is don't change out the EditContext model for another object once you've created it.  While it may be possible, it's not advisable.  If the model needs to be changed out, code to refresh the whole form: better safe than ...!
+In the form shown above `<DataAnnotationsValidator />` adds the `DataAnnotationsValidator` control to the form.  This hooks in as described above, and uses the custom attribute annotations on the model class to validate values. 
 
-#### FieldIdentifier
+## Validator
 
-The `FieldIdentifier` class represents a partial "serialization" of a model property.  The `EditContext` tracks and identifies individual properties throughj their `FieldIdentifier`.  `Model` is the object that owns the property and `FieldName` is the property name obtained through reflection.
+`Validator` is the base validator class.  It's declared abstract and uses generics.  Validators work on a chaining principle.  The base class contains all the common boilerplate code.
 
-#### Input Controls
+1. The first call is on an extension method defined for the object type to be validated.  Each object type needs it's own extension method to call it's specific validator.  This extension method returns the appropriate validator for the object type.
+2. Once you have the validator instance you can chain as many validation methods as you wish together.  Each is coded to run it's validation test, log any specific messages to the validator, trigger the trip if necessary, and return the validator instance.
+3. Validation finishes by calling `Validate`, which trips the passed tripwire if necessary, and log all the validation messages to the `ValidationMessageStore`.
 
-`InputText` and `InputNumber` and the other `InputBase` controls capture the cascaded `EditContext`.  Any value changes are pushed up to `EditContext` by calling `NotifyFieldChanged` with their `FieldIdentifier`.
+The `Validator` Properties/Fields are:
+```
+public bool IsValid => !Trip;
+public List<string> Messages { get; } = new List<string>();
+protected bool Trip { get; set; } = false;
+protected string FieldName { get; set; }
+protected T Value { get; set; }
+protected string DefaultMessage { get; set; } = "The value failed validation";
+protected ValidationMessageStore ValidationMessageStore { get; set; }
+protected object Model { get; set; }
+```
 
-#### EditContext Revisited
+The constructor populates the validator
+```csharp
+public Validator(T value, string fieldName, object model, ValidationMessageStore validationMessageStore, string message)
+{
+    this.FieldName = fieldName;
+    this.Value = value;
+    this.Model = model;
+    this.ValidationMessageStore = validationMessageStore;
+    this.DefaultMessage = string.IsNullOrWhiteSpace(message) ? this.DefaultMessage : message;
+}
+```
+There are two `Validate` methods: a public method for external usage and a protected one for specific validators to override.
+```csharp
 
-The `EditContext` maintains a `FieldIdentifier` list internally.  `FieldIdentifier` objects are passed around in various methods and events to identify specific fields.  Calls to `NotifyFieldChanged` add `FieldIdentifier` objects to the list.  `EditContext` triggers `OnFieldChanged` whenever `NotifyFieldChanged` is called.
+public virtual bool Validate(ref bool tripwire, string fieldname, string message = null)
+{
+    if (string.IsNullOrEmpty(fieldname) || this.FieldName.Equals(fieldname))
+    {
+        this.Validate(message);
+        if (!this.IsValid)
+            tripwire = true;
+    }
+    else this.Trip = false;
+    return this.IsValid;
+}
+```
+```csharp
+protected virtual bool Validate(string message = null)
+{
+    if (!this.IsValid)
+    {
+        message ??= this.DefaultMessage;
+        // Check if we've logged specific messages.  If not add the default message
+        if (this.Messages.Count == 0) Messages.Add(message);
+        //set up a FieldIdentifier and add the message to the Edit Context ValidationMessageStore
+        var fi = new FieldIdentifier(this.Model, this.FieldName);
+        this.ValidationMessageStore.Add(fi, this.Messages);
+    }
+    return this.IsValid;
+}
 
-`IsModified` provides access to the state of the list or an individual `FieldIdentifier`. `MarkAsUnmodified` resets an individual `FieldIdentifier` or all the `FieldIdentifiers` in the collection.
+protected void LogMessage(string message)
+{
+    if (!string.IsNullOrWhiteSpace(message)) Messages.Add(message);
+}
+```
 
-`EditContext` also contains the functionality to manage validation, but not actually do it.  We'll look at the validation process in the next article.  
+#### StringValidator
 
-## EditFormState Control
+Let's look at `StringValidator` as an example implementation of a validator.  The full set of validators is in the Repo.  There are two classes:
 
-The `EditFormState` control, like all edit form controls, captures the cascaded `EditState`.  What it does is:
+1. `StringValidatorExtensions` is a static class declaring as an extension method to `string`.
+2. `StringValidator` is a implementation of `Validator` specifically for strings.
 
-1. Builds a list of public properties exposed by the `Model` and maintains the edit state of each - an equality check of the original value against the edited value.
-2. Updates the state on each change in a field value.
-3. Exposes the state through a readonly property.
-4. Provides a EventCallback delegate which is triggered whenever the edit state is updated.
+`StringValidatorExtensions` declares a single static extension method `Validation` for `string`.  It returns a `StringValidator` instance.  Call `StringValidator` on any string to initialise a validation chain. 
 
-Before we look at the control let's look at the Model - in our case `WeatherForecast` - and some of the supporting classes.
+```csharp
+public static class StringValidatorExtensions
+{
+    public static StringValidator Validation(this string value, string fieldName, object model, ValidationMessageStore validationMessageStore, string message = null)
+    {
+        var validation = new StringValidator(value, fieldName, model, validationMessageStore, message);
+        return validation;
+    }
+}
+```
+`StringValidator` inherits from `Validator` and declares the specific validation chain methods for strings.  Each runs it's test.  If validation fails it logs any provided message to the message store and trips the tripwire.  Finally it returns `this`.  For strings, we have two length methods and a RegEx method to cover most circumstances. 
+
+```csharp
+public class StringValidator : Validator<string>
+{
+    public StringValidator(string value, string fieldName, object model, ValidationMessageStore validationMessageStore, string message) : base(value, fieldName, model, validationMessageStore, message) { }
+
+    /// Check of the string is longer than test
+    public StringValidator LongerThan(int test, string message = null)
+    {
+        if (string.IsNullOrEmpty(this.Value) || !(this.Value.Length > test))
+        {
+            Trip = true;
+            LogMessage(message);
+        }
+        return this;
+    }
+
+    /// Check if the string is shorter than
+    public StringValidator ShorterThan(int test, string message = null)
+    {
+            
+        if (string.IsNullOrEmpty(this.Value) || !(this.Value.Length < test))
+        {
+            Trip = true;
+            LogMessage(message);
+        }
+        return this;
+    }
+
+    /// Check if the string is matches a RegEx pattern
+    public StringValidator Matches(string pattern, string message = null)
+    {
+        if (!string.IsNullOrWhiteSpace(this.Value))
+        {
+            var match = Regex.Match(this.Value, pattern);
+            if (match.Success && match.Value.Equals(this.Value)) return this;
+        }
+        this.Trip = true;
+        LogMessage(message);
+        return this;
+    }
+}
+```
+
+#### IValidation
+
+The  `IValidation` interface looks like this.  It simply defines a `Validate` method.
+
+```csharp
+public interface IValidation
+{
+    public bool Validate(ValidationMessageStore validationMessageStore, string fieldname, object model = null);
+}
+```
 
 ### WeatherForecast
 
-`WeatherForecast` is a typical data class.  
-1. Each field is declared as a property with default values.
-2. `Validate` implements `IValidation`.  Ignore this for the moment we'll look at validation in the next article.  I've shown it as you'll see it in the Repo code.
+`WeatherForecast` is a typical data class. 
 
+1. It implements `IValidation` so the control can run validation. 
+1. Each field is declared as a property with default values.
+2. It implements `IValidation.Validate` which calls three validations.
+
+Each validation:
+
+1. Calls the `Validation` extension method on the type.
+2. Calls one or more validation chain methods.
+3. Calls `Validate` to log any validation messages to the `ValidationMessageStore` on `EditContext` and if necessary trip the tripwire.
 
 ```csharp
 public class WeatherForecast : IValidation
@@ -106,325 +226,196 @@ public class WeatherForecast : IValidation
     [NotMapped] public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
     public string Summary { get; set; } = string.Empty;
 
-    /// Ignore for now, but as you'll see it in the example repo it's shown
     public bool Validate(ValidationMessageStore validationMessageStore, string fieldname, object model = null)
     {
-        ....
+        model = model ?? this;
+        bool trip = false;
+
+        this.Summary.Validation("Summary", model, validationMessageStore)
+            .LongerThan(2, "Your description needs to be a little longer! 3 letters minimum")
+            .Validate(ref trip, fieldname);
+
+        this.Date.Validation("Date", model, validationMessageStore)
+            .NotDefault("You must select a date")
+            .LessThan(DateTime.Now.AddMonths(1), true, "Date can only be up to 1 month ahead")
+            .Validate(ref trip, fieldname);
+
+        this.TemperatureC.Validation("TemperatureC", model, validationMessageStore)
+            .LessThan(70, "The temperature must be less than 70C")
+            .GreaterThan(-60, "The temperature must be greater than -60C")
+            .Validate(ref trip, fieldname);
+
+        return !trip;
     }
+
 }
 ```
 
-### EditField
+## ValidationFormState Control
 
-`EditField` is our class for "serializing" out properties from the model.
+The `ValidationFormState` control replaces the basic Validator provided with Blazor.
 
-1. The base fields are *records* - they can only be set on initialization.
-2. `EditedValue` carries the current value of the field.
-3. `IsDirty` tests equality between `Value` and `EditedValue`.
-
-```csharp
-public class EditField
-{
-    public string FieldName { get; init; }
-    public Guid GUID { get; init; }
-    public object Value { get; init; }
-    public object Model { get; init; }
-    public object EditedValue { get; set; }
-    public bool IsDirty
-    {
-        get
-        {
-            if (Value != null && EditedValue != null) return !Value.Equals(EditedValue);
-            if (Value is null && EditedValue is null) return false;
-            return true;
-        }
-    }
-
-    public EditField(object model, string fieldName, object value)
-    {
-        this.Model = model;
-        this.FieldName = fieldName;
-        this.Value = value;
-        this.EditedValue = value;
-        this.GUID = Guid.NewGuid();
-    }
-
-    public void Reset()
-        => this.EditedValue = this.Value;
-}
-```
-
-### EditFieldCollection
-
-`EditFieldCollection` is an `IEnumerable` collection of `EditField`.  The class provides a set of controlled setters and getters for the collection and implements the necessary methods for the `IEnumerable` interface.  It also provides an `IsDirty` property to expose the state of the collection.
+1. It captures the cascaded `EditContext`.
+2. `DoValidationOnFieldChange` controls field level validation. if true it validates a field when a user exits the field.  if false it only responds to form level validation requests through `EditContext`.
+3. `ValidStateChanged` is a callback for the parent to attach an event handler if required.
+4. `IsValid` is a public readonly property exposing the current validation state.  It checks if `EditContext` has any validation messages.
+5. `ValidationMessageStore` is the `EditContext`'s `ValidationMessageStore`.
+6. `validating` is a boolean field to ensure we don't stack validations.
+7. `disposedValue` is part of the `IDisposable` implementation.
 
 ```csharp
-    public class EditFieldCollection : IEnumerable
-    {
-        private List<EditField> _items = new List<EditField>();
-        public int Count => _items.Count;
-        public Action<bool> FieldValueChanged;
-        public bool IsDirty => _items.Any(item => item.IsDirty);
+    [CascadingParameter] public EditContext EditContext { get; set; }
+    [Parameter] public bool DoValidationOnFieldChange { get; set; } = true;
+    [Parameter] public EventCallback<bool> ValidStateChanged { get; set; }
+    public bool IsValid => !EditContext?.GetValidationMessages().Any() ?? true;
 
-        public void Clear()
-            => _items.Clear();
-
-        public void ResetValues()
-            => _items.ForEach(item => item.Reset());
-
-        public IEnumerator GetEnumerator()
-            => new EditFieldCollectionEnumerator(_items);
-
-        public T Get<T>(string FieldName)
-        {
-            var x = _items.FirstOrDefault(item => item.FieldName.Equals(FieldName, StringComparison.CurrentCultureIgnoreCase));
-            if (x != null && x.Value is T t) return t;
-            return default;
-        }
-
-        public T GetEditValue<T>(string FieldName)
-        {
-            var x = _items.FirstOrDefault(item => item.FieldName.Equals(FieldName, StringComparison.CurrentCultureIgnoreCase));
-            if (x != null && x.EditedValue is T t) return t;
-            return default;
-        }
-
-        public bool TryGet<T>(string FieldName, out T value)
-        {
-            value = default;
-            var x = _items.FirstOrDefault(item => item.FieldName.Equals(FieldName, StringComparison.CurrentCultureIgnoreCase));
-            if (x != null && x.Value is T t) value = t;
-            return x.Value != default;
-        }
-
-        public bool TryGetEditValue<T>(string FieldName, out T value)
-        {
-            value = default;
-            var x = _items.FirstOrDefault(item => item.FieldName.Equals(FieldName, StringComparison.CurrentCultureIgnoreCase));
-            if (x != null && x.EditedValue is T t) value = t;
-            return x.EditedValue != default;
-        }
-
-        public bool HasField(EditField field)
-            => this.HasField(field.FieldName);
-
-        public bool HasField(string FieldName)
-        {
-            var x = _items.FirstOrDefault(item => item.FieldName.Equals(FieldName, StringComparison.CurrentCultureIgnoreCase));
-            if (x is null | x == default) return false;
-            return true;
-        }
-
-        public bool SetField(string FieldName, object value)
-        {
-            var x = _items.FirstOrDefault(item => item.FieldName.Equals(FieldName, StringComparison.CurrentCultureIgnoreCase));
-            if (x != null && x != default)
-            {
-                x.EditedValue = value;
-                this.FieldValueChanged?.Invoke(this.IsDirty);
-                return true;
-            }
-            return false;
-        }
-
-        public bool AddField(object model, string fieldName, object value)
-        {
-            this._items.Add(new EditField(model, fieldName, value));
-            return true;
-        }
-
+    private ValidationMessageStore validationMessageStore;
+    private bool validating = false;
+    private bool disposedValue;
 ```
 
-The `Enumerator` support class.
-
-```csharp
-        public class EditFieldCollectionEnumerator : IEnumerator
-        {
-            private List<EditField> _items = new List<EditField>();
-            private int _cursor;
-
-            object IEnumerator.Current
-            {
-                get
-                {
-                    if ((_cursor < 0) || (_cursor == _items.Count))
-                        throw new InvalidOperationException();
-                    return _items[_cursor];
-                }
-            }
-            public EditFieldCollectionEnumerator(List<EditField> items)
-            {
-                this._items = items;
-                _cursor = -1;
-            }
-            void IEnumerator.Reset()
-                => _cursor = -1;
-
-            bool IEnumerator.MoveNext()
-            {
-                if (_cursor < _items.Count)
-                    _cursor++;
-                return (!(_cursor == _items.Count));
-            }
-        }
-    }
-```
-
-Now we've seen the support classes, On to the main control.
-
-### EditFormState
-
-`EditFormState` is declared as a component and implements `IDisposable`.
-
-```csharp
-public class EditFormState : ComponentBase, IDisposable
-```
-
-The properties are:
-1. Pick up the `EditContext` from the cascade.
-2. Provide a `EditStateChanged` callback to the parent control to tell it the edit state has changed.
-4. Provide a readonly Property `IsDirty` for controls using `@ref` to check the control state.
-5. `EditFields` is the internal `EditFieldCollection` we populate and use to manage the edit state.
-6. `disposedValue` is part of the `IDisposable` implementation.
-
-```csharp
-        /// EditContext - cascaded from EditForm
-        [CascadingParameter] public EditContext EditContext { get; set; }
-
-        /// EventCallback for parent to link into for Edit State Change Events
-        /// passes the the current Dirty state
-        [Parameter] public EventCallback<bool> EditStateChanged { get; set; }
-
-        /// Property to expose the Edit/Dirty state of the control
-        public bool IsDirty => EditFields?.IsDirty ?? false;
-
-        private EditFieldCollection EditFields = new EditFieldCollection();
-        private bool disposedValue;
-```
-
-When the component initializes it captures the `Model` properties and populates `EditFields` with the initial data.  The last step is to wire up to `EditContext.OnFieldChanged` to `FieldChanged`, so `FieldChanged` gets called whenever a field value changes.
+When the component initializes it gets the `ValidationMessageStore` from `EditContext`.  It checks if it's running field level validation, and if so registers `FieldChanged` with `EditContext.OnFieldChanged` event. Finally it registers `ValidationRequested` with `EditContext.OnValidationRequested`.
 
 ```csharp
     protected override Task OnInitializedAsync()
     {
         Debug.Assert(this.EditContext != null);
+
         if (this.EditContext != null)
         {
-            // Populates the EditField Collection
-            this.GetEditFields();
+            // Get the Validation Message Store from the EditContext
+            this.validationMessageStore = new ValidationMessageStore(this.EditContext);
             // Wires up to the EditContext OnFieldChanged event
-            this.EditContext.OnFieldChanged += FieldChanged;
+            if (this.DoValidationOnFieldChange)
+                this.EditContext.OnFieldChanged += FieldChanged;
+            // Wires up to the Editcontext OnValidationRequested event
+            this.EditContext.OnValidationRequested += ValidationRequested;
         }
         return Task.CompletedTask;
     }
-
-    /// Method to populate the edit field collection
-    protected void GetEditFields()
-    {
-        // Gets the model from the EditContext and populates the EditFieldCollection
-        this.EditFields.Clear();
-        var model = this.EditContext.Model;
-        var props = model.GetType().GetProperties();
-        foreach (var prop in props)
-        {
-            var value = prop.GetValue(model);
-            EditFields.AddField(model, prop.Name, value);
-        }
-    }
 ```
 
-The `FieldChanged` event handler looks up the `EditField` from `EditFields` and sets its `EditedValue` by calling `SetField`.  It then triggers the `EditStateChanged` callback, with the current dirty state.
+The two event handlers call `Validate`, one with and one without the field name.
 
 ```csharp
-        /// Event Handler for Editcontext.OnFieldChanged
-        private void FieldChanged(object sender, FieldChangedEventArgs e)
-        {
-            // Get the PropertyInfo object for the model property
-            // Uses reflection to get property and value
-            var prop = e.FieldIdentifier.Model.GetType().GetProperty(e.FieldIdentifier.FieldName);
-            if (prop != null)
-            {
-                // Get the value for the property
-                var value = prop.GetValue(e.FieldIdentifier.Model);
-                // Sets the edit value in the EditField
-                EditFields.SetField(e.FieldIdentifier.FieldName, value);
-                // Invokes EditStateChanged
-                this.EditStateChanged.InvokeAsync(EditFields?.IsDirty ?? false);
-            }
-        }
+private void FieldChanged(object sender, FieldChangedEventArgs e)
+    => this.Validate(e.FieldIdentifier.FieldName);
+
+private void ValidationRequested(object sender, ValidationRequestedEventArgs e)
+    => this.Validate();
 ```
-
-Finally we have some utility methods and `IDisposable` implementation.
+The comments within `Validate` explain what it's doing.  It casts the `Model` as an IValidator and check if it's valid.  if so it calls the `Validate` method on the interface. We've seen *model*.`Validate` in the `WesatherForecast` data class.  When it passes a `fieldname` to `Validate` it only clears any validation messages for that specific `fieldname`.
 
 ```csharp
-    /// Method to Update the Edit State to current values 
-    public void UpdateState()
+private void Validate(string fieldname = null)
+{
+    // Checks to see if the Model implements IValidation
+    var validator = this.EditContext.Model as IValidation;
+    if (validator != null || !this.validating)
     {
-        this.GetEditFields();
-        this.EditStateChanged.InvokeAsync(EditFields?.IsDirty ?? false);
-    }
-
-    // IDisposable Implementation
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!disposedValue)
-        {
-            if (disposing)
-            {
-                if (this.EditContext != null)
-                    this.EditContext.OnFieldChanged -= this.FieldChanged;
-            }
-            disposedValue = true;
-        }
-    }
-
-    public void Dispose()
-    {
-        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-        Dispose(disposing: true);
-        GC.SuppressFinalize(this);
+        this.validating = true;
+        // Check if we are doing a field level or form level validation
+        // Form level - clear all validation messages
+        // Field level - clear any field specific validation messages
+        if (string.IsNullOrEmpty(fieldname))
+            this.validationMessageStore.Clear();
+        else
+            validationMessageStore.Clear(new FieldIdentifier(this.EditContext.Model, fieldname));
+        // Run the IValidation interface Validate method
+        validator.Validate(validationMessageStore, fieldname, this.EditContext.Model);
+        // Notify the EditContext that the Validation State has changed - 
+        // This precipitates a OnValidationStateChanged event which the validation message controls are all plugged into
+        this.EditContext.NotifyValidationStateChanged();
+        // Invoke ValidationStateChanged
+        this.ValidStateChanged.InvokeAsync(this.IsValid);
+        this.validating = false;
     }
 }
 ```
 
+The rest of the code consists of utility methods and `IDisposable` implementation.
+
+```csharp
+
+        /// <summary>
+        /// Method to clear the Validation and Edit State 
+        /// </summary>
+        public void Clear()
+            => this.validationMessageStore.Clear();
+
+        // IDisposable Implementation
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    if (this.EditContext != null)
+                    {
+                        this.EditContext.OnFieldChanged -= this.FieldChanged;
+                        this.EditContext.OnValidationRequested -= this.ValidationRequested;
+                    }
+                }
+                disposedValue = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+```
+
 ## A Simple Implementation
+
+![EditForm](https://shauncurtis.github.io/siteimages/Articles/Editor-Controls/ValidationFormState.png)
 
 To test the component, here's a simple test page.
 
-![EditForm](https://shauncurtis.github.io/siteimages/Articles/Editor-Controls/EditFormState.png)
+Change the temperature up and down and you should see the buttons change colour and Text, and enabled/disabled state.  Change the Temperature to 200 to get a validation message.
 
-Change the temperature up and down and you should see the State button change colour and Text.
-
-You can see this example in action at [https://cec-blazor-database.azurewebsites.net/editstateeditor](https://cec-blazor-database.azurewebsites.net/editstateeditor).
+You can see this at [https://cec-blazor-database.azurewebsites.net//validationeditor](https://cec-blazor-database.azurewebsites.net//validationeditor).
 
 ```html
 @using Blazor.Database.Data
-@page "/test"
+@page "/validationeditor"
 
 <EditForm Model="@Model" OnValidSubmit="@HandleValidSubmit">
     <EditFormState @ref="editFormState" EditStateChanged="this.EditStateChanged"></EditFormState>
+    <ValidationFormState @ref="validationFormState"></ValidationFormState>
 
     <label class="form-label">ID:</label> <InputNumber class="form-control" @bind-Value="Model.ID" />
-    <label class="form-label">Date:</label> <InputDate class="form-control" @bind-Value="Model.Date" />
-    <label class="form-label">Temp C:</label> <InputNumber class="form-control" @bind-Value="Model.TemperatureC" />
-    <label class="form-label">Summary:</label> <InputText class="form-control" @bind-Value="Model.Summary" />
+    <label class="form-label">Date:</label> <InputDate class="form-control" @bind-Value="Model.Date" /><ValidationMessage For="@(() => Model.Date)" />
+    <label class="form-label">Temp C:</label> <InputNumber class="form-control" @bind-Value="Model.TemperatureC" /><ValidationMessage For="@(() => Model.TemperatureC)" />
+    <label class="form-label">Summary:</label> <InputText class="form-control" @bind-Value="Model.Summary" /><ValidationMessage For="@(() => Model.Summary)" />
+
+    <div class="mt-2">
+        <div>Validation Messages:</div>
+        <ValidationSummary />
+    </div>
 
     <div class="text-right mt-2">
-        <button class="btn @btncolour">@btntext</button>
-        <button class="btn btn-primary" type="submit">Submit</button>
+        <button class="btn @btnStateColour" disabled>@btnStateText</button>
+        <button class="btn @btnValidColour" disabled>@btnValidText</button>
+        <button class="btn btn-primary" type="submit" disabled="@_btnSubmitDisabled">Submit</button>
     </div>
 
-    <div>
-    </div>
 </EditForm>
 ```
-
 ```csharp
 @code {
     protected bool _isDirty = false;
-    protected string btncolour => _isDirty ? "btn-danger" : "btn-success";
-    protected string btntext => _isDirty ? "Dirty" : "Clean";
+    protected bool _isValid => validationFormState?.IsValid ?? true;
+    protected string btnStateColour => _isDirty ? "btn-danger" : "btn-success";
+    protected string btnStateText => _isDirty ? "Dirty" : "Clean";
+    protected string btnValidColour => !_isValid ? "btn-danger" : "btn-success";
+    protected string btnValidText => !_isValid ? "Invalid" : "Valid";
+    protected bool _btnSubmitDisabled => !(_isValid && _isDirty);
+
     protected EditFormState editFormState { get; set; }
+    protected ValidationFormState validationFormState { get; set; }
 
     private WeatherForecast Model = new WeatherForecast()
     {
@@ -435,9 +426,7 @@ You can see this example in action at [https://cec-blazor-database.azurewebsites
     };
 
     private void HandleValidSubmit()
-    {
-        this.editFormState.UpdateState();
-    }
+        => this.editFormState.UpdateState();
 
     private void EditStateChanged(bool editstate)
         => this._isDirty = editstate;
@@ -446,7 +435,13 @@ You can see this example in action at [https://cec-blazor-database.azurewebsites
 
 ## Wrap Up
 
-While the real benefits of this control may not be immediately obvious if you haven't implementede such functionality before, we'll use it in the follow on articles to build an editor form.  The next article looks at the validation process and how to build a simple custom validator. The third article looks at form locking, using this control as part of the process.
+Hopefully I've explained how validation works and how to build a simple, but comprehensive and extensible validation system.
 
-If you've found this article well into the future, the latest version will be available [here](https://shauncurtis.github.io/articles/EditFormState.html)
+The most common problem with validation is `ValidationMessage` controls not showing messages.  There are normally two reasons for this:
 
+1. The UI hasn't updated.  Step through the code to check what's happening when.
+2. The `FieldIdentifier` generated from the `For` property of `ValidationMessage` doesn't match the `FieldIdentifier` in the validation store.  Check the `FieldIdentifier` you're generating and logging to the validation store.  
+
+The next article shows how to lock out the form and prevent navigation when the form is dirty.
+
+If you've found this article well into the future, the latest version will be available [here](https://shauncurtis.github.io/articles/ValidationFormState.html)
